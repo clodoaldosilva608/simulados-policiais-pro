@@ -362,7 +362,10 @@ export function LibraryScreen({
             <ShieldCheck className="h-6 w-6" />
           </div>
           <div className="min-w-0">
-            <p className="truncate text-base font-bold leading-tight">Simulados Policiais Pro</p>
+            <p className="truncate text-base font-bold leading-tight">
+              <span className="sm:hidden">Simulados Pro</span>
+              <span className="hidden sm:inline">Simulados Policiais Pro</span>
+            </p>
             <p className="hidden text-xs leading-tight text-slate-400 sm:block">
               Provas oficiais (PF, PC, PM, PRF, Polícia Penal) + transforme qualquer PDF em simulado
             </p>
