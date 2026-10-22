@@ -158,12 +158,11 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  // Modo demonstração: valida apenas o formato do código
-  const formatOk = /^SPP-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(code)
+  // Sem códigos configurados: FALHA FECHADA — nenhum acesso é concedido por
+  // código (a ativação real exige código cadastrado ou e-mail da Cakto).
   return NextResponse.json({
-    valid: formatOk,
-    message: formatOk
-      ? undefined
-      : 'Formato inválido. O código tem o formato SPP-XXXX-XXXX-XXXX (verifique o e-mail de compra).',
+    valid: false,
+    message:
+      'Códigos de acesso não estão ativos neste servidor. Use o e-mail da compra (Cakto) ou fale com o suporte.',
   })
 }

@@ -210,6 +210,39 @@ export async function deviceHasTrial(deviceUid: string): Promise<boolean> {
   return Boolean(trials[deviceUid])
 }
 
+/**
+ * Remove referências da conta nos índices (chamado quando o admin exclui um
+ * usuário): o e-mail volta a poder ser cadastrado e o aparelho é liberado.
+ */
+export async function purgeAccountRefs(userId: string, email?: string): Promise<void> {
+  try {
+    if (email) {
+      const norm = normalizeEmail(email)
+      const idx = await readJson<EmailIndex>(EMAIL_INDEX)
+      if (idx && idx[norm] === userId) {
+        const next = { ...idx }
+        delete next[norm]
+        await writeJson(EMAIL_INDEX, next)
+      }
+    }
+    const trials = await readJson<DeviceTrials>(DEVICE_TRIALS)
+    if (trials) {
+      const next: DeviceTrials = {}
+      let changed = false
+      for (const [dev, uid] of Object.entries(trials)) {
+        if (uid === userId) {
+          changed = true
+          continue
+        }
+        next[dev] = uid
+      }
+      if (changed) await writeJson(DEVICE_TRIALS, next)
+    }
+  } catch {
+    /* limpeza de índices nunca deve quebrar a exclusão */
+  }
+}
+
 async function markDeviceTrial(deviceUid: string, userId: string): Promise<void> {
   const trials = await readIndex<DeviceTrials>(DEVICE_TRIALS)
   if (trials[deviceUid]) return

@@ -59,13 +59,15 @@ export async function POST(req: NextRequest) {
 
   const emailRaw = clean(body.email, 120)?.toLowerCase()
   const status = clean(body.status, 20) as UserStatus | undefined
+  // ENDPOINT LEGADO (não é mais usado pelo app novo — que usa contas
+  // autenticadas). Um cliente NUNCA pode autodeclarar assinante: apenas
+  // trial/expired são aceitos; 'active' só via conta/servidor/webhook.
   const statusOk: UserStatus | undefined =
-    status && ['trial', 'active', 'expired', 'canceled'].includes(status) ? status : undefined
+    status && ['trial', 'expired'].includes(status) ? status : undefined
 
   // fontes aceitas do cliente (spoofing de 'sync'/'cakto_webhook'/'admin' é recusado)
   const sourceRaw = clean(body.source, 30)
-  const sourceOk =
-    sourceRaw && ['trial', 'cakto_email', 'code'].includes(sourceRaw) ? sourceRaw : undefined
+  const sourceOk = sourceRaw && ['trial'].includes(sourceRaw) ? sourceRaw : undefined
 
   const patch: Parameters<typeof upsertUser>[1] = {
     email: emailOk(emailRaw) ? emailRaw : undefined,

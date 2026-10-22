@@ -7,6 +7,7 @@ import {
   getUser,
   upsertUser,
 } from '@/lib/blob-registry'
+import { purgeAccountRefs } from '@/lib/user-auth'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -121,6 +122,7 @@ export async function POST(req: NextRequest) {
     }
     case 'delete': {
       await deleteUser(id)
+      await purgeAccountRefs(id, user?.email ?? user?.authEmail) // libera e-mail + aparelho
       void appendEvent({
         type: 'user_deleted',
         email: user?.email,
