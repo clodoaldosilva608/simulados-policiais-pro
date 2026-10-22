@@ -12,7 +12,7 @@ export function TextBlockCard({ text }: TextBlockCardProps) {
         <BookOpen className="h-4 w-4 text-slate-500" />
         <h3 className="text-sm font-semibold text-slate-800">{text.title}</h3>
       </div>
-      <div className="scroll-thin max-h-72 overflow-y-auto px-4 py-3">
+      <div className="scroll-thin max-h-[26rem] overflow-y-auto px-4 py-3">
         {text.paragraphs.map((p, i) => (
           <p key={i} className="mb-3 text-[15px] leading-relaxed text-slate-700 last:mb-0">
             {p}

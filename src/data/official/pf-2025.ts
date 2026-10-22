@@ -1,4 +1,4 @@
-import type { Question, QuestionOption, Subject } from '../types'
+import type { Question, QuestionOption, Subject, TextBlock } from '../types'
 
 /**
  * PROVA OFICIAL — Polícia Federal 2025 (Edital nº 1 – PF – Policial, de 20/05/2025)
@@ -40,12 +40,34 @@ interface Item {
   subjectId: string
   statement: string
   comment: string
+  textRef?: string
+}
+
+/**
+ * TEXTO-BASE (real da prova): 'Séries policiais' — sustenta os itens 1 a 8.
+ * Transcrito do caderno 106_PF_CB2_01, página 1.
+ */
+export const PF_TEXT_BLOCKS: Record<string, TextBlock> = {
+  'pf25-t1': {
+    id: 'pf25-t1',
+    title: 'Texto para os itens 1 a 8 — Séries policiais',
+    paragraphs: [
+      'Muitas obras cinematográficas e séries televisivas são inspiradas ou baseadas em obras literárias. Inúmeros filmes, desde o surgimento do cinema até a atualidade, seguem transpondo para a tela histórias relatadas nos livros, como atesta a crescente quantidade de best-sellers adaptados para o cinema.',
+      'Segundo Carlos Gerbase, cineasta e jornalista brasileiro, a prevalência do estilo narrativo é quase natural, visto que as histórias contadas nos livros e nos filmes são uma forma de compreender a vida como uma progressão de acontecimentos. O autor explica que as histórias têm começo, meio e fim e que, nelas, os acontecimentos levam a outros acontecimentos — assim como em nossas vidas. Logo, as narrativas aproximam o público porque este se identifica nelas. Além disso, livros e filmes permitem viagens por diversos mundos e possibilitam reflexões e compreensões, novos conhecimentos e novas experiências.',
+      'Ainda de acordo com Gerbase, quando nos identificamos com determinado personagem, aprendemos a como agir socialmente (ou antissocialmente). Nesse sentido, a literatura funciona como uma espécie de guia universal de boas maneiras para a convivência de comunidades às vezes muito diferentes culturalmente.',
+      'Histórias sobre a polícia, segundo Jonathan Nichols-Pethick, acadêmico especialista em mídia e cinema, representam mais do que uma disputa entre o bem e o mal. Elas responderiam a algumas das nossas mais prementes preocupações sociais: preocupações sobre como imaginamos e mantemos um senso de comunidade em uma sociedade vasta e muitas vezes alienante, e também sobre como enxergamos os nossos direitos e as nossas responsabilidades como cidadãos.',
+      'De acordo com Nichols-Pethick, o sucesso do gênero policial desde a literatura do século XIX, passando pelo cinema e pela televisão, se justificaria por essa relação estabelecida entre a narrativa policial e os indivíduos, que buscam nela sanar suas preocupações com a segurança ou buscar um senso de justiça.',
+    ],
+    source:
+      'Camila Furuzawa. Séries policiais: características e particularidades das narrativas policiais televisivas. In: Vozes & Diálogo, v. 12, n.º 2. Itajaí, SC, jul.-dez./2013 (com adaptações).',
+  },
 }
 
 const ITEMS: Item[] = [
   {
     id: 1,
     subjectId: 'portugues',
+    textRef: 'pf25-t1',
     statement:
       'O texto sugere que o gênero policial é o preferido do público na literatura, na televisão e no cinema.',
     comment:
@@ -54,6 +76,7 @@ const ITEMS: Item[] = [
   {
     id: 2,
     subjectId: 'portugues',
+    textRef: 'pf25-t1',
     statement:
       'Entende-se da leitura do texto que a frequente transposição da narrativa de best-sellers para as telas da televisão e do cinema se justifica pela expectativa de repetição do sucesso obtido na venda das respectivas obras literárias.',
     comment:
@@ -62,6 +85,7 @@ const ITEMS: Item[] = [
   {
     id: 3,
     subjectId: 'portugues',
+    textRef: 'pf25-t1',
     statement:
       'A partir das ideias de Carlos Gerbase reproduzidas no texto, conclui-se que as histórias narradas em livros e filmes podem nortear a conduta social de leitores e espectadores.',
     comment:
@@ -70,6 +94,7 @@ const ITEMS: Item[] = [
   {
     id: 4,
     subjectId: 'portugues',
+    textRef: 'pf25-t1',
     statement:
       'O termo “crescente” (segundo período do primeiro parágrafo) poderia ser substituído, sem prejuízo do sentido original do texto, por <b>considerável</b>.',
     comment:
@@ -78,6 +103,7 @@ const ITEMS: Item[] = [
   {
     id: 5,
     subjectId: 'portugues',
+    textRef: 'pf25-t1',
     statement:
       'No segundo período do segundo parágrafo, a oração “que as histórias têm começo, meio e fim” classifica-se sintaticamente como subordinada adjetiva restritiva.',
     comment:
@@ -86,6 +112,7 @@ const ITEMS: Item[] = [
   {
     id: 6,
     subjectId: 'portugues',
+    textRef: 'pf25-t1',
     statement:
       'A supressão da vírgula empregada após “personagem” (primeiro período do terceiro parágrafo) prejudicaria a correção gramatical do texto.',
     comment:
@@ -94,6 +121,7 @@ const ITEMS: Item[] = [
   {
     id: 7,
     subjectId: 'portugues',
+    textRef: 'pf25-t1',
     statement:
       'No segundo parágrafo, o intercambiamento das expressões “Logo” (terceiro período) e “Além disso” (quarto período), embora alterasse as relações coesivas entre os períodos, manteria a coerência das ideias do texto.',
     comment:
@@ -102,6 +130,7 @@ const ITEMS: Item[] = [
   {
     id: 8,
     subjectId: 'portugues',
+    textRef: 'pf25-t1',
     statement:
       'O pronome presente no termo “nela” (último parágrafo) tem como referente “a narrativa policial”.',
     comment:
@@ -456,6 +485,7 @@ const ITEMS: Item[] = [
 export const QUESTIONS: Question[] = ITEMS.map((it) => ({
   id: it.id,
   subjectId: it.subjectId,
+  textRef: it.textRef,
   statement: it.statement,
   options: CE,
   answer: GAB[it.id] === 'C' ? 'a' : 'b',

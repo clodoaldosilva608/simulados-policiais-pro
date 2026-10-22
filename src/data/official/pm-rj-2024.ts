@@ -1,11 +1,12 @@
 import type { Question, Subject } from '../types'
+import { ITEMS_PM2 } from './pm-rj-2024-part2'
 
 /**
  * PROVA OFICIAL — Concurso PM/RJ — Curso de Formação de Soldados do Quadro Policial Militar (2024)
  * Banca: FGV Conhecimento • Prova aplicada em 09/04/2024 • Caderno Tipo 1 (Branca)
  * Soldado Policial Militar Classe C — Nível Médio
  * Gabarito: GABARITO DEFINITIVO (FGV) — questões 35 e 40 anuladas (não transcritas).
- * Transcrição das questões 1 a 23.
+ * Transcrição das questões 1 a 50 (exceto anuladas).
  */
 
 const SUBJECTS: Subject[] = [
@@ -13,6 +14,9 @@ const SUBJECTS: Subject[] = [
   { id: 'matematica', name: 'Matemática Básica', professor: '' },
   { id: 'dir-humanos', name: 'Noções de Direitos Humanos', professor: '' },
   { id: 'dir-const', name: 'Direito Constitucional', professor: '' },
+  { id: 'leg-adm-pmerj', name: 'Dir. Administrativo e Legislação Aplicada à PMERJ', professor: '' },
+  { id: 'dir-penal', name: 'Noções de Direito Penal', professor: '' },
+  { id: 'dir-proc-penal', name: 'Noções de Direito Processual Penal', professor: '' },
 ]
 
 const OPT = (a: string, b: string, c: string, d: string, e: string) => [
@@ -27,6 +31,9 @@ const GAB: Record<number, 'a' | 'b' | 'c' | 'd' | 'e'> = {
   1: 'a', 2: 'd', 3: 'd', 4: 'c', 5: 'e', 6: 'c', 7: 'd', 8: 'a', 9: 'a', 10: 'e',
   11: 'c', 12: 'd', 13: 'e', 14: 'd', 15: 'b', 16: 'b', 17: 'a', 18: 'c', 19: 'd', 20: 'e',
   21: 'b', 22: 'c', 23: 'e',
+  24: 'b', 25: 'e', 26: 'a', 27: 'e', 28: 'a', 29: 'c', 30: 'a',
+  31: 'b', 32: 'c', 33: 'b', 34: 'b', 36: 'e', 37: 'd', 38: 'b', 39: 'c',
+  41: 'a', 42: 'e', 43: 'e', 44: 'e', 45: 'd', 46: 'c', 47: 'd', 48: 'e', 49: 'd', 50: 'a',
 }
 
 interface Item {
@@ -332,7 +339,7 @@ const ITEMS: Item[] = [
   },
 ]
 
-export const QUESTIONS: Question[] = ITEMS.map((it) => ({
+export const QUESTIONS: Question[] = [...ITEMS, ...ITEMS_PM2].map((it) => ({
   id: it.id,
   subjectId: it.subjectId,
   statement: it.statement,

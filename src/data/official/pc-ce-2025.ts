@@ -1,10 +1,11 @@
 import type { Question, Subject } from '../types'
+import { ITEMS2 } from './pc-ce-2025-part2'
 
 /**
  * PROVA OFICIAL — Concurso Público de Delegado de Polícia Civil do Ceará (PC/CE 2025)
  * Banca: CEBRASPE • Caderno 084_PC_CE_001_01 • Prova Objetiva P1
- * Gabarito: GABARITO DEFINITIVO (Cebraspe) — questões 5, 11, 18 e 30 anuladas.
- * Transcrição das questões 1 a 35 (P1).
+ * Gabarito: GABARITO DEFINITIVO (Cebraspe) — questões anuladas: 5, 11, 18, 30, 47, 48, 67, 72, 79, 82 e 96.
+ * Transcrição das questões 1 a 100 (P1 completa).
  */
 
 const SUBJECTS: Subject[] = [
@@ -14,6 +15,13 @@ const SUBJECTS: Subject[] = [
   { id: 'dir-penal', name: 'Direito Penal', professor: '' },
   { id: 'dir-proc', name: 'Direito Processual Penal', professor: '' },
   { id: 'leg-especial', name: 'Legislação Especial', professor: '' },
+  { id: 'med-legal', name: 'Medicina Legal e Ciências Forenses', professor: '' },
+  { id: 'criminologia', name: 'Criminologia', professor: '' },
+  { id: 'dir-civil', name: 'Direito Civil', professor: '' },
+  { id: 'dir-emp', name: 'Direito Empresarial', professor: '' },
+  { id: 'dir-proc-civ', name: 'Direito Processual Civil', professor: '' },
+  { id: 'dir-trib', name: 'Direito Tributário', professor: '' },
+  { id: 'dir-ambiental', name: 'Direito Ambiental', professor: '' },
 ]
 
 const OPT = (a: string, b: string, c: string, d: string, e: string) => [
@@ -30,6 +38,12 @@ const GAB: Record<number, 'a' | 'b' | 'c' | 'd' | 'e'> = {
   12: 'd', 13: 'b', 14: 'a', 15: 'b', 16: 'a', 17: 'e', 19: 'b',
   20: 'a', 21: 'd', 22: 'e', 23: 'd', 24: 'c', 25: 'c', 26: 'd', 27: 'c', 28: 'b',
   29: 'b', 31: 'c', 32: 'c', 33: 'd', 34: 'e', 35: 'c',
+  36: 'd', 37: 'e', 38: 'a', 39: 'a', 40: 'b', 41: 'd', 42: 'd', 43: 'c', 44: 'd', 45: 'd',
+  46: 'c', 49: 'b', 50: 'e', 51: 'd', 52: 'b', 53: 'c', 54: 'a', 55: 'e', 56: 'c', 57: 'd',
+  58: 'e', 59: 'c', 60: 'e', 61: 'c', 62: 'b', 63: 'a', 64: 'a', 65: 'd', 66: 'd',
+  68: 'a', 69: 'e', 70: 'd', 71: 'e', 73: 'c', 74: 'd', 75: 'd', 76: 'd', 77: 'e', 78: 'd',
+  80: 'c', 81: 'e', 83: 'e', 84: 'c', 85: 'd', 86: 'a', 87: 'e', 88: 'd', 89: 'a', 90: 'd',
+  91: 'c', 92: 'c', 93: 'c', 94: 'b', 95: 'a', 97: 'c', 98: 'c', 99: 'a', 100: 'd',
 }
 
 interface Item {
@@ -495,7 +509,7 @@ const ITEMS: Item[] = [
   },
 ]
 
-export const QUESTIONS: Question[] = ITEMS.map((it) => ({
+export const QUESTIONS: Question[] = [...ITEMS, ...ITEMS2].map((it) => ({
   id: it.id,
   subjectId: it.subjectId,
   statement: it.statement,

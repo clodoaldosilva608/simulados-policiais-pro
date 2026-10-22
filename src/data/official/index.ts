@@ -1,8 +1,8 @@
 import type { SimuladoPack } from '../types'
-import { QUESTIONS as PF_QUESTIONS, PF_SUBJECTS } from './pf-2025'
+import { QUESTIONS as PF_QUESTIONS, PF_SUBJECTS, PF_TEXT_BLOCKS } from './pf-2025'
 import { QUESTIONS as PC_CE_QUESTIONS, PC_CE_SUBJECTS } from './pc-ce-2025'
 import { QUESTIONS as PM_RJ_QUESTIONS, PM_RJ_SUBJECTS } from './pm-rj-2024'
-import { QUESTIONS as PRF_QUESTIONS, PRF_SUBJECTS } from './prf-2021'
+import { QUESTIONS as PRF_QUESTIONS, PRF_SUBJECTS, PRF_TEXT_BLOCKS } from './prf-2021'
 import { QUESTIONS as PP_QUESTIONS, PP_SUBJECTS } from './policial-penal'
 
 const OFICIAL_FOOTER =
@@ -20,7 +20,7 @@ export const PF_2025_PACK: SimuladoPack = {
   durationMinutes: 90,
   passPct: 70,
   subjects: PF_SUBJECTS,
-  textBlocks: {},
+  textBlocks: PF_TEXT_BLOCKS,
   questions: PF_QUESTIONS,
   questionFormat: 'certo_errado',
   carreira: 'PF',
@@ -33,9 +33,9 @@ export const PF_2025_PACK: SimuladoPack = {
 export const PC_CE_2025_PACK: SimuladoPack = {
   id: 'oficial-pc-ce-2025',
   title: 'Polícia Civil do Ceará 2025 — Delegado (P1)',
-  subtitle: 'Prova oficial • Delegado de Polícia Civil • Banca CEBRASPE',
+  subtitle: 'Prova oficial • Delegado de Polícia Civil • Banca CEBRASPE • P1 completa',
   footer: OFICIAL_FOOTER,
-  durationMinutes: 90,
+  durationMinutes: 120,
   passPct: 70,
   subjects: PC_CE_SUBJECTS,
   textBlocks: {},
@@ -51,7 +51,7 @@ export const PC_CE_2025_PACK: SimuladoPack = {
 export const PM_RJ_2024_PACK: SimuladoPack = {
   id: 'oficial-pm-rj-2024',
   title: 'Polícia Militar do RJ 2024 — Soldado (Tipo 1)',
-  subtitle: 'Prova oficial • Soldado PM Classe C • Banca FGV',
+  subtitle: 'Prova oficial • Soldado PM Classe C • Banca FGV • Prova completa',
   footer: OFICIAL_FOOTER,
   durationMinutes: 90,
   passPct: 70,
@@ -69,12 +69,12 @@ export const PM_RJ_2024_PACK: SimuladoPack = {
 export const PRF_2021_PACK: SimuladoPack = {
   id: 'oficial-prf-2021',
   title: 'Polícia Rodoviária Federal 2021 — Prova Objetiva',
-  subtitle: 'Prova oficial • Policial Rodoviário Federal • Banca CEBRASPE',
+  subtitle: 'Prova oficial • Policial Rodoviário Federal • Banca CEBRASPE • Itens 9-120',
   footer: `${OFICIAL_FOOTER} Última prova objetiva da PRF realizada até o momento (novo certame previsto para 2026).`,
-  durationMinutes: 90,
+  durationMinutes: 120,
   passPct: 70,
   subjects: PRF_SUBJECTS,
-  textBlocks: {},
+  textBlocks: PRF_TEXT_BLOCKS,
   questions: PRF_QUESTIONS,
   questionFormat: 'certo_errado',
   carreira: 'PRF',

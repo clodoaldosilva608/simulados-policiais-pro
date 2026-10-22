@@ -1,10 +1,12 @@
-import type { Question, QuestionOption, Subject } from '../types'
+import type { Question, QuestionOption, Subject, TextBlock } from '../types'
+import { ITEMS_PRF2 } from './prf-2021-part2'
 
 /**
  * PROVA OFICIAL — Concurso PRF 2021 (Edital Concurso PRF nº 1, de 18/01/2021)
  * Cargo: Policial Rodoviário Federal • Banca: CEBRASPE • Caderno 578_PRF_001_01
- * Gabarito: GABARITO DEFINITIVO (Cebraspe). Itens 39 e 45 anulados (omitidos).
+ * Gabarito: GABARITO DEFINITIVO (Cebraspe). Itens anulados (X): 39, 45, 67, 69, 76, 83, 89, 98 e 99 (omitidos).
  * Prova aplicada em 05/12/2021 — último concurso da PRF até o momento (novo certame previsto para 2026).
+ * Transcrição dos itens 9 a 120 (exceto anulados e itens de estatística com fórmulas).
  */
 
 const SUBJECTS: Subject[] = [
@@ -16,6 +18,14 @@ const SUBJECTS: Subject[] = [
   { id: 'fisica', name: 'Física', professor: '' },
   { id: 'etica', name: 'Ética no Serviço Público e Administração', professor: '' },
   { id: 'geografia', name: 'Geografia e Infraestrutura de Transportes', professor: '' },
+  { id: 'leg-transito', name: 'Legislação de Trânsito e CONTRAN', professor: '' },
+  { id: 'dir-adm', name: 'Direito Administrativo', professor: '' },
+  { id: 'leg-carreira', name: 'Carreira e Atribuições PRF', professor: '' },
+  { id: 'dir-const', name: 'Direito Constitucional', professor: '' },
+  { id: 'dir-penal', name: 'Direito Penal', professor: '' },
+  { id: 'dir-proc', name: 'Direito Processual Penal', professor: '' },
+  { id: 'leg-especial', name: 'Legislação Especial', professor: '' },
+  { id: 'dir-humanos', name: 'Direitos Humanos', professor: '' },
 ]
 
 const CE: QuestionOption[] = [
@@ -31,6 +41,12 @@ const GAB: Record<number, 'C' | 'E'> = {
   40: 'C', 41: 'E', 42: 'E', 43: 'C', 44: 'E',
   46: 'E', 47: 'C', 48: 'C', 49: 'E',
   50: 'C', 51: 'C', 52: 'E', 53: 'C', 54: 'C',
+  55: 'E', 56: 'C', 57: 'C', 58: 'E', 59: 'E', 60: 'C', 61: 'E', 62: 'E', 66: 'E', 68: 'E',
+  70: 'E', 71: 'C', 72: 'C', 73: 'E', 74: 'E', 78: 'E', 81: 'E',
+  86: 'E', 87: 'E', 88: 'E', 90: 'C', 91: 'E', 92: 'C', 93: 'E', 95: 'C', 97: 'C',
+  100: 'E', 101: 'E', 102: 'C', 103: 'E', 104: 'C', 105: 'E', 106: 'C', 107: 'E', 108: 'E', 109: 'C',
+  110: 'E', 111: 'C', 112: 'C', 113: 'C', 114: 'C', 115: 'E',
+  116: 'C', 117: 'E', 118: 'C', 119: 'C', 120: 'E',
 }
 
 interface Item {
@@ -38,12 +54,31 @@ interface Item {
   subjectId: string
   statement: string
   comment: string
+  textRef?: string
+}
+
+/**
+ * TEXTO-BASE (real da prova): Texto 1A18-I — 'Considerações sobre a história da polícia'
+ * Sustenta os itens 9 a 21. Transcrito do caderno 578_PRF_001_01, página 1.
+ */
+export const PRF_TEXT_BLOCKS: Record<string, TextBlock> = {
+  'prf21-t1': {
+    id: 'prf21-t1',
+    title: 'Texto 1A18-I — para os itens 9 a 21',
+    paragraphs: [
+      'Nos Estados Unidos da América, no século XIX, a passagem da polícia do sistema de justiça para o de governo da cidade significou também a passagem da noção de caça aos criminosos para a prevenção dos crimes, em um deslocamento do ato para o ator. Como na Europa, a ênfase na prevenção teria representado nova atitude diante do controle social, com o desenvolvimento pela polícia de uma habilidade específica, a de explicar e prevenir o comportamento criminoso. Isso acabou redundando no foco nas “classes perigosas”, ou seja, em setores específicos da sociedade vistos como produtores de comportamento criminoso. Nesse processo, desenvolveram-se os vários campos de saber vinculados aos sistemas de justiça criminal, polícia e prisão, voltados para a identificação, para a explicação e para a prevenção do comportamento criminoso, agora visto como “desviante”, como a medicina legal, a psiquiatria e, especialmente, a criminologia.',
+      'Na Europa ocidental, as novas instituições estatais de vigilância deveriam controlar o exercício da força em sociedades em que os níveis de violência física nas relações interpessoais e do Estado com a sociedade estavam em declínio. De acordo com a difundida teoria do processo civilizador, de Norbert Elias, no Ocidente moderno, a agressividade, assim como outras emoções e prazeres, foi domada, “refinada” e “civilizada”. O autor estabelece um contraste entre a violência “franca e desinibida” do período medieval, que não excluía ninguém da vida social e era socialmente permitida e até certo ponto necessária, e o autocontrole e a moderação das emoções que acabaram por se impor na modernidade. A conversão do controle que se exercia por terceiros no autocontrole é relacionada à organização e à estabilização de Estados modernos, nos quais a monopolização da força física em órgãos centrais permitiu a criação de espaços pacificados. Em tais espaços, os indivíduos passaram a ser submetidos a regras e leis mais rigorosas, mas ficaram mais protegidos da irrupção da violência na sua vida, na medida em que as ameaças físicas tornaram-se despersonalizadas e monopolizadas por especialistas.',
+    ],
+    source:
+      'C. Mauch. Considerações sobre a história da polícia. In: MÉTIS: história & cultura, v. 6, n.º 11, jan./jun. 2007, p. 107-19 (com adaptações).',
+  },
 }
 
 const ITEMS: Item[] = [
   {
     id: 9,
     subjectId: 'portugues',
+    textRef: 'prf21-t1',
     statement:
       'A transferência da polícia do sistema de justiça para o governo da cidade marca o que pode ser considerado uma mudança de paradigma no que se refere ao papel da polícia na sociedade.',
     comment:
@@ -52,6 +87,7 @@ const ITEMS: Item[] = [
   {
     id: 10,
     subjectId: 'portugues',
+    textRef: 'prf21-t1',
     statement:
       'Seriam mantidos a correção gramatical e os sentidos do texto caso o segundo período do primeiro parágrafo fosse reescrito da seguinte maneira: Porque nos países europeus houve empenho em prevenir crimes, o que representou nova atitude de controle social, o resultado foi o desenvolvimento de uma habilidade específica pelas autoridades policiais: a de explicar e prevenir o crime.',
     comment:
@@ -60,6 +96,7 @@ const ITEMS: Item[] = [
   {
     id: 11,
     subjectId: 'portugues',
+    textRef: 'prf21-t1',
     statement:
       'Infere-se da leitura do primeiro parágrafo do texto que o desenvolvimento de áreas científicas ligadas à justiça criminal no século XIX está associado a visões preconceituosas sobre certos grupos de indivíduos.',
     comment:
@@ -68,6 +105,7 @@ const ITEMS: Item[] = [
   {
     id: 12,
     subjectId: 'portugues',
+    textRef: 'prf21-t1',
     statement:
       'Um dos traços característicos da modernidade, segundo Norbert Elias, é a renúncia de certas emoções e de certos prazeres pelos indivíduos, que, em compensação, passaram a ser protegidos da violência devido à atuação do Estado.',
     comment:
@@ -76,6 +114,7 @@ const ITEMS: Item[] = [
   {
     id: 13,
     subjectId: 'portugues',
+    textRef: 'prf21-t1',
     statement: 'Depreende-se do segundo parágrafo do texto que a violência na era medieval era comum e socialmente aceita.',
     comment:
       'O segundo parágrafo descreve a violência medieval como praticada de forma corrente e aceita socialmente, antes do monopólio estatal da violência — item CERTO.',
@@ -83,6 +122,7 @@ const ITEMS: Item[] = [
   {
     id: 14,
     subjectId: 'portugues',
+    textRef: 'prf21-t1',
     statement:
       'Conclui-se do texto que o monopólio da violência legítima pelo Estado deveu-se à necessidade de reação aos índices insustentáveis de violência física entre os indivíduos.',
     comment:
@@ -91,6 +131,7 @@ const ITEMS: Item[] = [
   {
     id: 15,
     subjectId: 'portugues',
+    textRef: 'prf21-t1',
     statement:
       'O pronome “Isso”, que introduz o terceiro período do primeiro parágrafo do texto, poderia ser corretamente substituído por “O que”.',
     comment:
@@ -99,6 +140,7 @@ const ITEMS: Item[] = [
   {
     id: 16,
     subjectId: 'portugues',
+    textRef: 'prf21-t1',
     statement:
       'Infere-se do segundo parágrafo do texto que a agressividade humana passou por um processo de transformação gradativo de perda de aspectos primitivos e animalescos.',
     comment:
@@ -107,6 +149,7 @@ const ITEMS: Item[] = [
   {
     id: 17,
     subjectId: 'portugues',
+    textRef: 'prf21-t1',
     statement:
       'O emprego do vocábulo “irrupção”, no último período do texto, indica que a violência atingia os indivíduos de forma súbita.',
     comment:
@@ -115,6 +158,7 @@ const ITEMS: Item[] = [
   {
     id: 18,
     subjectId: 'portugues',
+    textRef: 'prf21-t1',
     statement:
       'Mantém-se a correção gramatical do trecho “o autocontrole e a moderação das emoções que acabaram por se impor na modernidade”, do texto, caso a forma verbal “impor” seja flexionada no plural “imporem”.',
     comment:
@@ -123,6 +167,7 @@ const ITEMS: Item[] = [
   {
     id: 19,
     subjectId: 'portugues',
+    textRef: 'prf21-t1',
     statement:
       'A correção gramatical do último período do texto seria mantida, embora seu sentido original fosse prejudicado, se a locução “na medida em que” fosse substituída por “à medida que” e a vírgula empregada logo após “vida” fosse suprimida.',
     comment:
@@ -131,6 +176,7 @@ const ITEMS: Item[] = [
   {
     id: 20,
     subjectId: 'portugues',
+    textRef: 'prf21-t1',
     statement:
       'O trecho “A conversão do controle que se exercia por terceiros no autocontrole é relacionada à organização e à estabilização de Estados modernos” poderia ser reescrito da seguinte forma, sem prejuízo para os sentidos e para a correção gramatical do texto: Converter o controle efetuado por terceiros a autocontrole concatena a organização e estabilização dos Estados do mundo moderno.',
     comment:
@@ -139,6 +185,7 @@ const ITEMS: Item[] = [
   {
     id: 21,
     subjectId: 'portugues',
+    textRef: 'prf21-t1',
     statement:
       'A coerência e os sentidos do texto seriam mantidos caso fosse suprimido o artigo “os”, no trecho “desenvolveram-se os vários campos de saber”, no último período do primeiro parágrafo.',
     comment:
@@ -393,9 +440,14 @@ const ITEMS: Item[] = [
   },
 ]
 
-export const QUESTIONS: Question[] = ITEMS.map((it) => ({
+export const QUESTIONS: Question[] = [...ITEMS, ...ITEMS_PRF2.map((it) => ({
+  ...it,
+  textRef: undefined,
+  options: CE,
+}))].map((it) => ({
   id: it.id,
   subjectId: it.subjectId,
+  textRef: it.textRef,
   statement: it.statement,
   options: CE,
   answer: GAB[it.id] === 'C' ? 'a' : 'b',
