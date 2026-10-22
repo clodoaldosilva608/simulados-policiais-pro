@@ -189,3 +189,21 @@ Work Log:
 Stage Summary:
 - DASHBOARD DO ALUNO NO AR: nome + acertos + erros + aproveitamento + nº de simulados, atualizados a cada prova concluída (oficiais E de PDF), com migração automática do histórico anterior
 - Repositório GitHub agora completo (local-db.ts estava fora pelo gitignore)
+
+---
+Task ID: 9
+Agent: main (Z.ai)
+Task: Métricas por disciplina no painel do aluno (ex.: "Direito Constitucional: 70%")
+
+Work Log:
+- local-db.ts: LocalAttempt ganhou `bySubject?: Record<string, {correct, answered}>` (chave = NOME exibido da disciplina, ex. "Direito Constitucional" — agrega provas diferentes na mesma matéria)
+- page.tsx: helpers subjectNameMap (subjectId→nome do pack) e bySubjectFrom (só questões RESPONDIDAS); handleFinish grava bySubject; migração de estados antigos também calcula bySubject; statsFromAttempts agrega disciplinas entre todas as tentativas dedupadas — lista ordenada por mais respondidas, depois menor aproveitamento
+- library-screen.tsx: seção "DESEMPENHO POR DISCIPLINA" sob a taxa geral — grid 2 colunas (1 no mobile), cada card com nome + % (verde ≥70 / âmbar ≥50 / vermelho <50) + mini barra Progress + "X de Y questões"; section some se nenhuma tentativa tem dados por disciplina (tentativas legadas antigas)
+- FIX: `(map.get(k) ??= ...)` não compila (alvo de atribuição inválido) → padrão get/if/set; build limpo
+- Deploy CLI READY (dpl 58l08nxsl) + push GitHub 0781dff (3 arquivos, +103)
+- E2E PRODUÇÃO 390x844: conta e2e.disciplinas.t8 → prova PF 51 questões C/E → 5 respostas (C,C,E,C,E) → finalizada → painel: 1 acerto/4 erros/20%/1 simulado + "DESEMPENHO POR DISCIPLINA — Língua Portuguesa 20% · 1 de 5 questões" (gabarito PF Q1-5 = E,E,C,E,E e Q1-8 são todas 'portugues' → EXATO); 0 erros de console; screenshot /tmp/e2e-dash-disciplinas.png
+- Limpeza: conta de teste excluída via painel admin (restam só as do dono)
+
+Stage Summary:
+- PAINEL COM MÉTRICAS POR DISCIPLINA NO AR: acertos/erros/aproveitamento gerais + barras por matéria agregando todos os simulados concluídos (oficiais e de PDF), validado matematicamente contra o gabarito oficial da PF
+- Próximos passos possíveis: filtros por período (7/30 dias), evolução temporal (linha), metas de estudo
