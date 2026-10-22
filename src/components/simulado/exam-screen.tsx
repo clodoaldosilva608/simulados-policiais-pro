@@ -39,17 +39,16 @@ import {
 import { HtmlContent } from './html-content'
 import { TextBlockCard } from './text-block-card'
 import {
-  EXAM_META,
-  OPTION_KEYS,
-  QUESTIONS,
-  TEXT_BLOCKS,
   formatDuration,
-  getSubject,
+  getPackSubject,
   type ExamState,
   type OptionKey,
+  type Question,
+  type SimuladoPack,
 } from '@/data/simulado'
 
 interface ExamScreenProps {
+  pack: SimuladoPack
   state: ExamState
   onAnswer: (qid: number, key: OptionKey) => void
   onToggleMark: (qid: number) => void
@@ -57,7 +56,7 @@ interface ExamScreenProps {
   onFinish: () => void
 }
 
-export function ExamScreen({ state, onAnswer, onToggleMark, onNavigate, onFinish }: ExamScreenProps) {
+export function ExamScreen({ pack, state, onAnswer, onToggleMark, onNavigate, onFinish }: ExamScreenProps) {
   const [now, setNow] = useState(() => Date.now())
   const [navOpen, setNavOpen] = useState(false)
   const autoFired = useRef(false)
@@ -67,14 +66,15 @@ export function ExamScreen({ state, onAnswer, onToggleMark, onNavigate, onFinish
     return () => clearInterval(t)
   }, [])
 
+  const QUESTIONS = pack.questions
   const question = QUESTIONS[state.current]
-  const subject = getSubject(question.subjectId)
+  const subject = getPackSubject(pack, question.subjectId)
   const answeredCount = QUESTIONS.filter((q) => state.answers[q.id]).length
   const markedSet = new Set(state.marked)
   const isAnswered = Boolean(state.answers[question.id])
 
   // Cronômetro
-  const DURATION_MS = EXAM_META.durationMinutes * 60 * 1000
+  const DURATION_MS = pack.durationMinutes * 60 * 1000
   const remainingMs = state.mode === 'prova' ? DURATION_MS - (now - state.startedAt) : Infinity
   const elapsedMs = state.mode === 'estudo' ? now - state.startedAt : Math.min(DURATION_MS, now - state.startedAt)
   const isLowTime = state.mode === 'prova' && remainingMs < 10 * 60 * 1000
@@ -103,20 +103,20 @@ export function ExamScreen({ state, onAnswer, onToggleMark, onNavigate, onFinish
     onAnswer(question.id, key)
   }
 
-  // Atalhos de teclado (a–e, 1–5, setas)
+  // Atalhos de teclado (a–e, 1–5, setas) — apenas alternativas existentes na questão
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null
       if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) return
       const key = e.key.toLowerCase()
-      const idx = OPTION_KEYS.indexOf(key as OptionKey)
-      if (idx >= 0) {
-        handleAnswer(OPTION_KEYS[idx])
+      const opt = question.options.find((o) => o.key === key)
+      if (opt) {
+        handleAnswer(opt.key)
         return
       }
       const num = Number.parseInt(key, 10)
-      if (num >= 1 && num <= 5) {
-        handleAnswer(OPTION_KEYS[num - 1])
+      if (num >= 1 && num <= question.options.length) {
+        handleAnswer(question.options[num - 1].key)
         return
       }
       if (e.key === 'ArrowRight') goNext()
@@ -139,7 +139,7 @@ export function ExamScreen({ state, onAnswer, onToggleMark, onNavigate, onFinish
               <GraduationCap className="h-5 w-5" />
             </div>
             <div className="min-w-0">
-              <p className="truncate text-sm font-bold leading-tight">Simulado PC PE – Agente</p>
+              <p className="truncate text-sm font-bold leading-tight">{pack.title}</p>
               <p className="text-[11px] leading-tight text-slate-400">
                 {state.mode === 'prova' ? 'Modo prova' : 'Modo estudo'}
                 {state.name ? ` • ${state.name}` : ''}
@@ -223,6 +223,7 @@ export function ExamScreen({ state, onAnswer, onToggleMark, onNavigate, onFinish
                   <SheetDescription>Ir para uma questão específica</SheetDescription>
                 </SheetHeader>
                 <NavigationGrid
+                  questions={QUESTIONS}
                   current={state.current}
                   answers={state.answers}
                   marked={markedSet}
@@ -269,7 +270,11 @@ export function ExamScreen({ state, onAnswer, onToggleMark, onNavigate, onFinish
                     </button>
                   </div>
 
-                  {question.textRef && <div className="mt-5"><TextBlockCard text={TEXT_BLOCKS[question.textRef]} /></div>}
+                  {question.textRef && pack.textBlocks[question.textRef] && (
+                    <div className="mt-5">
+                      <TextBlockCard text={pack.textBlocks[question.textRef]} />
+                    </div>
+                  )}
 
                   <div className="mt-5">
                     <HtmlContent html={question.statement} />
@@ -369,6 +374,7 @@ export function ExamScreen({ state, onAnswer, onToggleMark, onNavigate, onFinish
               <CardContent className="p-4">
                 <p className="mb-3 text-sm font-semibold text-slate-900">Mapa de questões</p>
                 <NavigationGrid
+                  questions={QUESTIONS}
                   current={state.current}
                   answers={state.answers}
                   marked={markedSet}
@@ -396,16 +402,17 @@ export function ExamScreen({ state, onAnswer, onToggleMark, onNavigate, onFinish
 }
 
 interface NavigationGridProps {
+  questions: Question[]
   current: number
   answers: Record<number, OptionKey>
   marked: Set<number>
   onSelect: (index: number) => void
 }
 
-function NavigationGrid({ current, answers, marked, onSelect }: NavigationGridProps) {
+function NavigationGrid({ questions, current, answers, marked, onSelect }: NavigationGridProps) {
   return (
     <div className="grid grid-cols-8 gap-1.5 sm:grid-cols-10 lg:grid-cols-6">
-      {QUESTIONS.map((q, i) => {
+      {questions.map((q, i) => {
         const answered = Boolean(answers[q.id])
         const isMarked = marked.has(q.id)
         const isCurrent = i === current

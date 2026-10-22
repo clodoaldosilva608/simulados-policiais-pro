@@ -28,14 +28,14 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
 import {
-  EXAM_META,
-  TOTAL_QUESTIONS,
-  computeResults,
+  computePackResults,
   formatDuration,
   type ExamState,
+  type SimuladoPack,
 } from '@/data/simulado'
 
 interface ResultsScreenProps {
+  pack: SimuladoPack
   state: ExamState
   onReview: () => void
   onRedo: () => void
@@ -54,11 +54,12 @@ function chipColor(pct: number) {
   return 'bg-red-100 text-red-800'
 }
 
-export function ResultsScreen({ state, onReview, onRedo, onBackToStart }: ResultsScreenProps) {
-  const result = computeResults(state.answers)
+export function ResultsScreen({ pack, state, onReview, onRedo, onBackToStart }: ResultsScreenProps) {
+  const TOTAL_QUESTIONS = pack.questions.length
+  const result = computePackResults(pack, state.answers)
   const markedCount = state.marked.length
   const timeUsedMs = (state.finishedAt ?? Date.now()) - state.startedAt
-  const passed = result.pct >= EXAM_META.passPct
+  const passed = result.pct >= pack.passPct
   const best = [...result.bySubject].sort((a, b) => b.pct - a.pct)[0]
   const worst = [...result.bySubject].sort((a, b) => a.pct - b.pct)[0]
 
@@ -98,7 +99,7 @@ export function ResultsScreen({ state, onReview, onRedo, onBackToStart }: Result
                   }`}
                 >
                   {passed ? <Award className="h-5 w-5" /> : <Target className="h-5 w-5" />}
-                  {passed ? `Aprovado — acima da meta (${EXAM_META.passPct}%)` : `Abaixo da meta (${EXAM_META.passPct}%)`}
+                  {passed ? `Aprovado — acima da meta (${pack.passPct}%)` : `Abaixo da meta (${pack.passPct}%)`}
                 </div>
               </div>
 
@@ -169,7 +170,7 @@ export function ResultsScreen({ state, onReview, onRedo, onBackToStart }: Result
             <CardContent className="p-5 sm:p-6">
               <h2 className="mb-1 text-lg font-bold text-slate-900">Desempenho por disciplina</h2>
               <p className="mb-5 text-xs text-slate-500">
-                As barras em verde indicam rendimento igual ou superior à meta de {EXAM_META.passPct}%.
+                As barras em verde indicam rendimento igual ou superior à meta de {pack.passPct}%.
               </p>
               <div className="space-y-4">
                 {result.bySubject.map((sr) => (
@@ -189,7 +190,9 @@ export function ResultsScreen({ state, onReview, onRedo, onBackToStart }: Result
                         style={{ width: `${sr.pct}%` }}
                       />
                     </div>
-                    <p className="mt-1 text-[11px] text-slate-400">Professor: {sr.subject.professor}</p>
+                    {sr.subject.professor && (
+                      <p className="mt-1 text-[11px] text-slate-400">Professor: {sr.subject.professor}</p>
+                    )}
                   </div>
                 ))}
               </div>

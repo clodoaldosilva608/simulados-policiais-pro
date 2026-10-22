@@ -15,44 +15,50 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { HtmlContent } from './html-content'
 import { TextBlockCard } from './text-block-card'
-import { QUESTIONS, TEXT_BLOCKS, getSubject, type OptionKey } from '@/data/simulado'
+import { getPackSubject, type OptionKey, type SimuladoPack } from '@/data/simulado'
 
 type FilterKey = 'todas' | 'acertos' | 'erros' | 'branco' | 'sinalizadas'
 
 interface ReviewScreenProps {
+  pack: SimuladoPack
   answers: Record<number, OptionKey>
   marked: number[]
   onBack: () => void
 }
 
-function statusOf(answers: Record<number, OptionKey>, qid: number): 'acertos' | 'erros' | 'branco' {
+function statusOf(
+  questions: ReviewScreenProps['pack']['questions'],
+  answers: Record<number, OptionKey>,
+  qid: number,
+): 'acertos' | 'erros' | 'branco' {
   const a = answers[qid]
-  const q = QUESTIONS.find((x) => x.id === qid)!
+  const q = questions.find((x) => x.id === qid)!
   if (!a) return 'branco'
   return a === q.answer ? 'acertos' : 'erros'
 }
 
-export function ReviewScreen({ answers, marked, onBack }: ReviewScreenProps) {
+export function ReviewScreen({ pack, answers, marked, onBack }: ReviewScreenProps) {
   const [filter, setFilter] = useState<FilterKey>('todas')
   const markedSet = new Set(marked)
+  const QUESTIONS = pack.questions
 
   const counts = useMemo(() => {
     let acertos = 0
     let erros = 0
     let branco = 0
     QUESTIONS.forEach((q) => {
-      const s = statusOf(answers, q.id)
+      const s = statusOf(QUESTIONS, answers, q.id)
       if (s === 'acertos') acertos++
       else if (s === 'erros') erros++
       else branco++
     })
     return { todas: QUESTIONS.length, acertos, erros, branco, sinalizadas: marked.length }
-  }, [answers, marked])
+  }, [QUESTIONS, answers, marked])
 
   const visible = QUESTIONS.filter((q) => {
     if (filter === 'todas') return true
     if (filter === 'sinalizadas') return markedSet.has(q.id)
-    return statusOf(answers, q.id) === filter
+    return statusOf(QUESTIONS, answers, q.id) === filter
   })
 
   const tabLabel: Record<FilterKey, string> = {
@@ -105,9 +111,9 @@ export function ReviewScreen({ answers, marked, onBack }: ReviewScreenProps) {
         )}
 
         {visible.map((q) => {
-          const subject = getSubject(q.subjectId)
+          const subject = getPackSubject(pack, q.subjectId)
           const userAnswer = answers[q.id]
-          const status = statusOf(answers, q.id)
+          const status = statusOf(QUESTIONS, answers, q.id)
           return (
             <motion.div
               key={q.id}
@@ -146,7 +152,11 @@ export function ReviewScreen({ answers, marked, onBack }: ReviewScreenProps) {
                     </span>
                   </div>
 
-                  {q.textRef && <div className="mt-5"><TextBlockCard text={TEXT_BLOCKS[q.textRef]} /></div>}
+                  {q.textRef && pack.textBlocks[q.textRef] && (
+                    <div className="mt-5">
+                      <TextBlockCard text={pack.textBlocks[q.textRef]} />
+                    </div>
+                  )}
 
                   <div className="mt-5">
                     <HtmlContent html={q.statement} />

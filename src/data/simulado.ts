@@ -1,4 +1,4 @@
-import type { ExamResult, OptionKey, Question, Subject, TextBlock } from './types'
+import type { ExamResult, OptionKey, Question, SimuladoPack, Subject, TextBlock } from './types'
 import { PART1 } from './questions-part1'
 import { PART2 } from './questions-part2'
 import { PART3 } from './questions-part3'
@@ -12,6 +12,9 @@ export const EXAM_META = {
   durationMinutes: 330, // 5h30 — janela original das 8h00 às 13h30
   passPct: 70,
 } as const
+
+/** Identificador do simulado embutido no app */
+export const STATIC_DOC_ID = 'pcpe-agente'
 
 export const SUBJECTS: Subject[] = [
   { id: 'leg-estadual', name: 'Legislação Estadual', professor: 'Ronaldo Paiva' },
@@ -63,12 +66,25 @@ export function getSubject(id: string): Subject {
   return SUBJECTS.find((s) => s.id === id) ?? { id, name: id, professor: '' }
 }
 
-export function computeResults(answers: Record<number, OptionKey>): ExamResult {
+/** Busca a disciplina dentro de um pack (sem professora quando dinâmico) */
+export function getPackSubject(pack: SimuladoPack, id: string): Subject {
+  return pack.subjects.find((s) => s.id === id) ?? { id, name: id, professor: '' }
+}
+
+/** Calcula o resultado de um simulado a partir de um pack (estático ou de PDF) */
+export function computePackResults(pack: SimuladoPack, answers: Record<number, OptionKey>): ExamResult {
   let correct = 0
   let answered = 0
 
-  const bySubject = SUBJECTS.map((subject) => {
-    const questions = QUESTIONS.filter((q) => q.subjectId === subject.id)
+  // Agrupa questões por disciplina presente no pack
+  const subjectIds: string[] = []
+  for (const q of pack.questions) {
+    if (!subjectIds.includes(q.subjectId)) subjectIds.push(q.subjectId)
+  }
+
+  const bySubject = subjectIds.map((sid) => {
+    const subject = getPackSubject(pack, sid)
+    const questions = pack.questions.filter((q) => q.subjectId === sid)
     const hits = questions.filter((q) => answers[q.id] === q.answer).length
     correct += hits
     answered += questions.filter((q) => answers[q.id]).length
@@ -76,18 +92,37 @@ export function computeResults(answers: Record<number, OptionKey>): ExamResult {
       subject,
       correct: hits,
       total: questions.length,
-      pct: Math.round((hits / questions.length) * 100),
+      pct: questions.length > 0 ? Math.round((hits / questions.length) * 100) : 0,
     }
   })
 
+  const total = pack.questions.length
+
   return {
     correct,
-    total: TOTAL_QUESTIONS,
-    pct: Math.round((correct / TOTAL_QUESTIONS) * 100),
+    total,
+    pct: total > 0 ? Math.round((correct / total) * 100) : 0,
     answered,
-    unanswered: TOTAL_QUESTIONS - answered,
+    unanswered: total - answered,
     bySubject,
   }
+}
+
+export function computeResults(answers: Record<number, OptionKey>): ExamResult {
+  return computePackResults(STATIC_PACK, answers)
+}
+
+/** Simulado embutido no aplicativo (PC PE – Agente, 60 questões) */
+export const STATIC_PACK: SimuladoPack = {
+  id: STATIC_DOC_ID,
+  title: EXAM_META.title,
+  subtitle: EXAM_META.subtitle,
+  footer: `Conteúdo original: simulado inédito “PC PE – Agente, Pós-Edital • BANCA: CEBRASPE” (${EXAM_META.reference}). Aplicação de estudo sem vínculo com a banca ou com o órgão organizador.`,
+  durationMinutes: EXAM_META.durationMinutes,
+  passPct: EXAM_META.passPct,
+  subjects: SUBJECTS,
+  textBlocks: TEXT_BLOCKS,
+  questions: QUESTIONS,
 }
 
 export function formatDuration(ms: number): string {
@@ -97,4 +132,13 @@ export function formatDuration(ms: number): string {
   const s = totalSeconds % 60
   const pad = (v: number) => String(v).padStart(2, '0')
   return `${pad(h)}:${pad(m)}:${pad(s)}`
+}
+
+/** Formata minutos em rótulo amigável (ex.: 330 → "5h30", 90 → "1h30", 45 → "45min") */
+export function formatDurationLabel(minutes: number): string {
+  const h = Math.floor(minutes / 60)
+  const m = minutes % 60
+  if (h > 0 && m > 0) return `${h}h${String(m).padStart(2, '0')}`
+  if (h > 0) return `${h}h`
+  return `${m}min`
 }

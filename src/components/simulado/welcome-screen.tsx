@@ -3,16 +3,17 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
 import {
+  ArrowLeft,
   BookOpen,
   CheckCircle2,
   Clock,
   Eraser,
   FileText,
+  GraduationCap,
   ListChecks,
   PenLine,
   Play,
   Save,
-  ShieldCheck,
   Trophy,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -30,35 +31,68 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
-import type { ExamMode } from '@/data/types'
-import { EXAM_META, TOTAL_QUESTIONS } from '@/data/simulado'
+import { formatDurationLabel, type ExamMode, type SimuladoPack } from '@/data/simulado'
+
+export interface AttemptInfo {
+  name: string
+  mode: string
+  correct: number
+  total: number
+  pct: number
+  timeUsedMs: number
+  createdAt: string
+}
 
 interface WelcomeScreenProps {
+  pack: SimuladoPack
   defaultName?: string
   defaultMode?: ExamMode
   hasSaved: boolean
   savedFinished: boolean
+  attempts: AttemptInfo[]
   onStart: (name: string, mode: ExamMode) => void
   onContinue: () => void
   onViewResults: () => void
   onDiscard: () => void
+  onBack: () => void
 }
 
-const INSTRUCTIONS = [
-  `${TOTAL_QUESTIONS} questões objetivas com 5 alternativas (a–e), cobrindo 11 disciplinas do edital.`,
-  'Duração: 5 horas e 30 minutos — mesma janela do simulado original (das 8h00 às 13h30).',
-  'Questões inéditas elaboradas com base no perfil da banca organizadora.',
-  'Ao final, você recebe a nota por disciplina, o gabarito oficial e o comentário de cada questão.',
-  'Seu progresso é salvo automaticamente neste navegador — você pode retomar quando quiser.',
-]
-
-export function WelcomeScreen({ defaultName = '', defaultMode = 'prova', hasSaved, savedFinished, onStart, onContinue, onViewResults, onDiscard }: WelcomeScreenProps) {
+export function WelcomeScreen({
+  pack,
+  defaultName = '',
+  defaultMode = 'prova',
+  hasSaved,
+  savedFinished,
+  attempts,
+  onStart,
+  onContinue,
+  onViewResults,
+  onDiscard,
+  onBack,
+}: WelcomeScreenProps) {
   const [name, setName] = useState(defaultName)
   const [mode, setMode] = useState<ExamMode>(defaultMode)
 
+  const total = pack.questions.length
+  const multiChoice = total > 0 && pack.questions[0].options.length > 2
+  const durLabel = formatDurationLabel(pack.durationMinutes)
+
+  const INSTRUCTIONS = [
+    `${total} questões ${multiChoice ? 'objetivas com 5 alternativas (a–e)' : 'no estilo Certo/Errado'}, geradas a partir do conteúdo do material.`,
+    `Duração: ${durLabel} no modo prova — cronômetro regressivo, como na prova real.`,
+    'Ao final, você recebe a nota geral, o desempenho por assunto e o gabarito comentado de cada questão.',
+    'Seu progresso é salvo automaticamente neste navegador — você pode retomar quando quiser.',
+  ]
+
   return (
     <div className="min-h-screen bg-slate-50">
-      <main className="mx-auto w-full max-w-3xl px-4 py-10 sm:py-14">
+      <main className="mx-auto w-full max-w-3xl px-4 py-8 sm:py-12">
+        <div className="mb-4">
+          <Button variant="outline" onClick={onBack} className="border-slate-300 bg-white">
+            <ArrowLeft className="mr-1 h-4 w-4" /> Biblioteca de simulados
+          </Button>
+        </div>
+
         <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}>
           {/* Hero */}
           <Card className="overflow-hidden border-0 bg-slate-900 text-white shadow-xl">
@@ -67,24 +101,24 @@ export function WelcomeScreen({ defaultName = '', defaultMode = 'prova', hasSave
               <div className="pointer-events-none absolute -bottom-16 -left-8 h-52 w-52 rounded-full bg-amber-400/5" />
               <div className="flex items-center gap-3">
                 <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-amber-400 text-slate-950">
-                  <ShieldCheck className="h-7 w-7" />
+                  <GraduationCap className="h-7 w-7" />
                 </div>
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-widest text-amber-300">{EXAM_META.subtitle}</p>
-                  <h1 className="text-2xl font-bold sm:text-3xl">Simulado PC PE – Agente</h1>
+                  <p className="text-xs font-semibold uppercase tracking-widest text-amber-300">{pack.subtitle}</p>
+                  <h1 className="text-2xl font-bold sm:text-3xl">{pack.title}</h1>
                 </div>
               </div>
               <p className="mt-4 text-sm leading-relaxed text-slate-300 sm:text-base">
-                Simulado interativo completo: responda com cronômetro real, marque questões para revisão e receba
-                <span className="font-semibold text-white"> desempenho por disciplina</span> com
+                Simulado interativo: responda com cronômetro real, marque questões para revisão e receba
+                <span className="font-semibold text-white"> desempenho por assunto</span> com
                 <span className="font-semibold text-white"> gabarito comentado</span> ao final.
               </p>
               <div className="mt-6 flex flex-wrap gap-2 text-xs font-medium">
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1.5">
-                  <FileText className="h-3.5 w-3.5 text-amber-300" /> {TOTAL_QUESTIONS} questões
+                  <FileText className="h-3.5 w-3.5 text-amber-300" /> {total} questões
                 </span>
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1.5">
-                  <Clock className="h-3.5 w-3.5 text-amber-300" /> 5h30 de prova
+                  <Clock className="h-3.5 w-3.5 text-amber-300" /> {durLabel} de prova
                 </span>
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1.5">
                   <BookOpen className="h-3.5 w-3.5 text-amber-300" /> Gabarito comentado
@@ -115,6 +149,44 @@ export function WelcomeScreen({ defaultName = '', defaultMode = 'prova', hasSave
             </CardContent>
           </Card>
 
+          {/* Tentativas anteriores */}
+          {attempts.length > 0 && (
+            <Card className="mt-6">
+              <CardContent className="p-5 sm:p-6">
+                <h2 className="flex items-center gap-2 text-base font-semibold text-slate-900">
+                  <Trophy className="h-5 w-5 text-amber-600" /> Tentativas anteriores
+                </h2>
+                <div className="mt-4 space-y-2">
+                  {attempts.slice(0, 5).map((a, i) => (
+                    <div
+                      key={i}
+                      className="flex items-center gap-3 rounded-lg border border-slate-100 bg-slate-50 px-3.5 py-2.5 text-sm"
+                    >
+                      <span
+                        className={`inline-flex h-8 w-12 shrink-0 items-center justify-center rounded-md text-xs font-bold tabular-nums ${
+                          a.pct >= pack.passPct
+                            ? 'bg-emerald-100 text-emerald-800'
+                            : a.pct >= 50
+                              ? 'bg-amber-100 text-amber-800'
+                              : 'bg-red-100 text-red-800'
+                        }`}
+                      >
+                        {a.pct}%
+                      </span>
+                      <span className="min-w-0 truncate text-slate-700">
+                        {a.name ? a.name : 'Candidato'} • {a.correct}/{a.total} acertos
+                      </span>
+                      <span className="ml-auto shrink-0 text-xs text-slate-400">
+                        {a.mode === 'prova' ? 'Modo prova' : 'Modo estudo'} •{' '}
+                        {new Date(a.createdAt).toLocaleDateString('pt-BR')}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {/* Retomar / resultado anterior */}
           {hasSaved && (
             <Card className="mt-6 border-emerald-200 bg-emerald-50">
@@ -123,7 +195,7 @@ export function WelcomeScreen({ defaultName = '', defaultMode = 'prova', hasSave
                   <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600" />
                   <p className="text-sm font-medium text-emerald-900">
                     {savedFinished
-                      ? 'Você já finalizou um simulado anteriormente neste navegador.'
+                      ? 'Você já finalizou uma tentativa anteriormente neste navegador.'
                       : 'Você possui um simulado em andamento salvo neste navegador.'}
                   </p>
                 </div>
@@ -199,7 +271,7 @@ export function WelcomeScreen({ defaultName = '', defaultMode = 'prova', hasSave
                     </span>
                   </div>
                   <p className="mt-2 text-xs leading-relaxed text-slate-600">
-                    Cronômetro regressivo de <b>5h30</b>, como no dia real. O gabarito é revelado apenas ao finalizar.
+                    Cronômetro regressivo de <b>{durLabel}</b>. O gabarito é revelado apenas ao finalizar.
                   </p>
                 </button>
 
@@ -232,10 +304,9 @@ export function WelcomeScreen({ defaultName = '', defaultMode = 'prova', hasSave
             </CardContent>
           </Card>
 
-          <p className="mt-6 text-center text-xs leading-relaxed text-slate-400">
-            Conteúdo original: simulado inédito “PC PE – Agente, Pós-Edital • BANCA: CEBRASPE” ({EXAM_META.reference}).
-            <br />Aplicação de estudo sem vínculo com a banca ou com o órgão organizador.
-          </p>
+          {pack.footer && (
+            <p className="mt-6 text-center text-xs leading-relaxed text-slate-400">{pack.footer}</p>
+          )}
         </motion.div>
       </main>
     </div>

@@ -14,18 +14,18 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Simulado Interativo — PC PE Agente (Banca CEBRASPE)",
+  title: "Simulados Interativos — transforme PDFs em simulados de estudo",
   description:
-    "Simulado interativo completo do concurso PC PE – Agente: 60 questões objetivas, cronômetro de 5h30, marcação de questões, desempenho por disciplina e revisão comentada.",
-  keywords: ["PC PE", "Agente", "simulado", "CEBRASPE", "concurso", "Pernambuco", "Polícia Civil"],
-  authors: [{ name: "Simulado Interativo" }],
+    "Envie qualquer PDF (edital, apostila, resumo) e a IA transforma o conteúdo em um simulado interativo: questões inéditas, cronômetro, gabarito comentado e desempenho por assunto. Inclui o simulado PC PE – Agente (CEBRASPE) embutido.",
+  keywords: ["simulado", "PDF", "concurso", "questões", "IA", "CEBRASPE", "estudos", "PC PE"],
+  authors: [{ name: "Simulados Interativos" }],
   icons: {
     icon: "https://z-cdn.chatglm.cn/z-ai/static/logo.svg",
   },
   openGraph: {
-    title: "Simulado Interativo — PC PE Agente",
-    description: "60 questões, cronômetro real, desempenho por disciplina e gabarito comentado.",
-    siteName: "Simulado PC PE – Agente",
+    title: "Simulados Interativos — seus PDFs viram simulados",
+    description: "Upload de PDF, geração de questões por IA, cronômetro real, desempenho por assunto e gabarito comentado.",
+    siteName: "Simulados Interativos",
     type: "website",
   },
 };
