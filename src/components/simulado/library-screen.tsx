@@ -28,7 +28,10 @@ import {
   Upload,
   UserRound,
   CheckCheck,
+  History,
   ListOrdered,
+  Moon,
+  Sun,
   XCircle,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -63,6 +66,16 @@ import {
   type SimuladoPack,
 } from '@/data/simulado'
 import { UploadDialog } from './upload-dialog'
+import { TrialCountdown } from './trial-countdown'
+import {
+  FONT_SIZES,
+  getFontSize,
+  getTheme,
+  setFontSize,
+  setTheme,
+  type FontSize,
+  type ThemeMode,
+} from '@/lib/appearance'
 
 export interface SavedInfo {
   finished: boolean
@@ -88,8 +101,8 @@ interface LibraryScreenProps {
   onOpen: (docId: string) => void
   onDelete: (docId: string) => void
   onUploadCompleted: () => void
-  /** Estado da licença: assinante ou teste grátis */
-  licenseBadge: { active: boolean; trialDaysLeft: number | null }
+  /** Estado da licença: assinante ou teste grátis (com fim exato do teste) */
+  licenseBadge: { active: boolean; trialDaysLeft: number | null; trialEndsAt?: string | null }
   /** E-mail da conta autenticada (badge do cabeçalho) */
   accountEmail?: string
   /** Primeiro nome do aluno (saudação no painel) */
@@ -98,6 +111,8 @@ interface LibraryScreenProps {
   stats?: DashboardStats | null
   /** Abre a tela de acesso/gerenciar assinatura */
   onManageAccess: () => void
+  /** Abre a tela Meu desempenho (aba resumo) ou Meu histórico (aba historico) */
+  onOpenPerformance: (tab: 'resumo' | 'historico') => void
   /** Encerra a sessão nesta conta/aparelho (menu hambúrguer) */
   onSignOut: () => void
 }
@@ -300,10 +315,15 @@ export function LibraryScreen({
   accountName,
   stats,
   onManageAccess,
+  onOpenPerformance,
   onSignOut,
 }: LibraryScreenProps) {
   const [menuOpen, setMenuOpen] = useState(false)
   const [dialogOpen, setDialogOpen] = useState(false)
+  // Preferências de aparência: lidas no 1º render do cliente (o Sheet fechado
+  // não renderiza nada no SSR, então não há risco de mismatch de hidratação)
+  const [theme, setThemeState] = useState<ThemeMode>(() => getTheme())
+  const [fontSize, setFontSizeState] = useState<FontSize>(() => getFontSize())
   const [resumeDocId, setResumeDocId] = useState<string | null>(null)
   const [initialFile, setInitialFile] = useState<File | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<DocumentSummary | null>(null)
@@ -371,7 +391,44 @@ export function LibraryScreen({
             </p>
           </div>
           <div className="ml-auto flex shrink-0 items-center gap-2">
-            {/* Menu hambúrguer — todas as opções da conta */}
+            <button
+              type="button"
+              onClick={onManageAccess}
+              aria-label="Gerenciar conta e assinatura"
+              title={
+                accountName || accountEmail
+                  ? `Conta: ${[accountName, accountEmail].filter(Boolean).join(' • ')}`
+                  : 'Gerenciar conta'}
+              className={`hidden shrink-0 whitespace-nowrap rounded-full px-2.5 py-1.5 text-[11px] font-bold transition-colors sm:block sm:px-3 ${
+                licenseBadge.active
+                  ? 'bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25'
+                  : 'bg-amber-400/15 text-amber-300 hover:bg-amber-400/25'
+              }`}
+            >
+              {licenseBadge.active ? (
+                <>
+                  <span className="sm:hidden">★</span>
+                  <span className="hidden sm:inline">★ Assinante</span>
+                </>
+              ) : licenseBadge.trialDaysLeft !== null ? (
+                <>
+                  <span className="sm:hidden">{licenseBadge.trialDaysLeft}d</span>
+                  <span className="hidden sm:inline">Teste grátis • {licenseBadge.trialDaysLeft}d</span>
+                </>
+              ) : (
+                <>
+                  <span className="sm:hidden">Teste</span>
+                  <span className="hidden sm:inline">Teste grátis</span>
+                </>
+              )}
+            </button>
+            <Button
+              onClick={openNewUpload}
+              className="bg-amber-500 font-bold text-slate-950 hover:bg-amber-400"
+            >
+              <Plus className="mr-1.5 h-4 w-4" /> Novo
+            </Button>
+            {/* Menu hambúrguer — canto superior direito, todas as opções da conta */}
             <Sheet open={menuOpen} onOpenChange={setMenuOpen}>
               <SheetTrigger asChild>
                 <Button
@@ -469,6 +526,24 @@ export function LibraryScreen({
                     }}
                   />
                   <MenuItem
+                    icon={Target}
+                    label="Meu desempenho"
+                    hint="Acertos, erros e disciplinas"
+                    onClick={() => {
+                      setMenuOpen(false)
+                      onOpenPerformance('resumo')
+                    }}
+                  />
+                  <MenuItem
+                    icon={History}
+                    label="Meu histórico"
+                    hint="Provas que você já concluiu"
+                    onClick={() => {
+                      setMenuOpen(false)
+                      onOpenPerformance('historico')
+                    }}
+                  />
+                  <MenuItem
                     icon={FilePlus2}
                     label="Novo simulado"
                     hint="Transforme um PDF em prova"
@@ -478,23 +553,72 @@ export function LibraryScreen({
                     }}
                   />
                   <MenuItem
-                    icon={Target}
-                    label="Meu desempenho"
-                    hint="Acertos, erros e disciplinas"
-                    onClick={() => {
-                      setMenuOpen(false)
-                      requestAnimationFrame(() =>
-                        document.getElementById('painel-desempenho')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-                      )
-                    }}
-                  />
-                  <MenuItem
                     icon={LifeBuoy}
                     label="Suporte"
                     hint={SITE.supportEmail}
                     href={`mailto:${SITE.supportEmail}`}
                     onClick={() => setMenuOpen(false)}
                   />
+
+                  {/* Aparência: tema e tamanho da fonte */}
+                  <div className="pt-2">
+                    <p className="px-1 pb-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-400">
+                      Aparência
+                    </p>
+                    <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50/60 p-2.5">
+                      <div className="flex items-center gap-2">
+                        <span className="w-14 shrink-0 text-xs font-semibold text-slate-600">Tema</span>
+                        <div className="grid flex-1 grid-cols-2 gap-1 rounded-lg bg-slate-200/70 p-0.5">
+                          {(
+                            [
+                              ['light', 'Claro', Sun],
+                              ['dark', 'Escuro', Moon],
+                            ] as [ThemeMode, string, typeof Sun][]
+                          ).map(([mode, label, Icon]) => (
+                            <button
+                              key={mode}
+                              type="button"
+                              aria-pressed={theme === mode}
+                              onClick={() => {
+                                setTheme(mode)
+                                setThemeState(mode)
+                              }}
+                              className={`flex h-8 items-center justify-center gap-1.5 rounded-md text-xs font-bold transition-colors ${
+                                theme === mode
+                                  ? 'bg-white text-slate-900 shadow-sm'
+                                  : 'text-slate-500 hover:text-slate-700'
+                              }`}
+                            >
+                              <Icon className="h-3.5 w-3.5" /> {label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="w-14 shrink-0 text-xs font-semibold text-slate-600">Fonte</span>
+                        <div className="grid flex-1 grid-cols-3 gap-1 rounded-lg bg-slate-200/70 p-0.5">
+                          {(Object.keys(FONT_SIZES) as FontSize[]).map((key) => (
+                            <button
+                              key={key}
+                              type="button"
+                              aria-pressed={fontSize === key}
+                              onClick={() => {
+                                setFontSize(key)
+                                setFontSizeState(key)
+                              }}
+                              className={`flex h-8 items-center justify-center rounded-md text-xs font-bold transition-colors ${
+                                fontSize === key
+                                  ? 'bg-white text-slate-900 shadow-sm'
+                                  : 'text-slate-500 hover:text-slate-700'
+                              }`}
+                            >
+                              {FONT_SIZES[key].label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </nav>
 
                 <div className="border-t border-slate-200 p-4">
@@ -514,45 +638,16 @@ export function LibraryScreen({
                 </div>
               </SheetContent>
             </Sheet>
-            <button
-              type="button"
-              onClick={onManageAccess}
-              aria-label="Gerenciar conta e assinatura"
-              title={
-                accountName || accountEmail
-                  ? `Conta: ${[accountName, accountEmail].filter(Boolean).join(' • ')}`
-                  : 'Gerenciar conta'}
-              className={`hidden shrink-0 whitespace-nowrap rounded-full px-2.5 py-1.5 text-[11px] font-bold transition-colors sm:block sm:px-3 ${
-                licenseBadge.active
-                  ? 'bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25'
-                  : 'bg-amber-400/15 text-amber-300 hover:bg-amber-400/25'
-              }`}
-            >
-              {licenseBadge.active ? (
-                <>
-                  <span className="sm:hidden">★</span>
-                  <span className="hidden sm:inline">★ Assinante</span>
-                </>
-              ) : licenseBadge.trialDaysLeft !== null ? (
-                <>
-                  <span className="sm:hidden">{licenseBadge.trialDaysLeft}d</span>
-                  <span className="hidden sm:inline">Teste grátis • {licenseBadge.trialDaysLeft}d</span>
-                </>
-              ) : (
-                <>
-                  <span className="sm:hidden">Teste</span>
-                  <span className="hidden sm:inline">Teste grátis</span>
-                </>
-              )}
-            </button>
-            <Button
-              onClick={openNewUpload}
-              className="bg-amber-500 font-bold text-slate-950 hover:bg-amber-400"
-            >
-              <Plus className="mr-1.5 h-4 w-4" /> Novo
-            </Button>
           </div>
         </div>
+        {/* Cronômetro de urgência do teste grátis (fixo no topo) */}
+        {!licenseBadge.active && (
+          <TrialCountdown
+            trialEndsAt={licenseBadge.trialEndsAt}
+            trialDaysLeft={licenseBadge.trialDaysLeft}
+            onSubscribe={() => window.open(SITE.checkoutUrl, '_blank', 'noopener,noreferrer')}
+          />
+        )}
       </header>
 
       <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6">

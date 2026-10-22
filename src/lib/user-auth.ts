@@ -141,17 +141,19 @@ export interface SessionCheck {
 export function accessOf(user: RegistryUser): {
   status: 'active' | 'trial' | 'expired' | 'canceled'
   trialDaysLeft: number | null
+  /** ISO do instante exato em que o teste grátis termina (cronômetro do app) */
+  trialEndsAt: string | null
 } {
-  if (user.adminGrant || user.status === 'active') return { status: 'active', trialDaysLeft: null }
+  if (user.adminGrant || user.status === 'active') return { status: 'active', trialDaysLeft: null, trialEndsAt: null }
   if (user.status === 'trial' && user.trialStartedAt) {
     const end = user.trialStartedAt + (user.trialExtendedDays ?? 0) * 86400000 + SITE.trialDays * 86400000
     if (Date.now() < end) {
       const left = Math.max(0, Math.ceil((end - Date.now()) / 86400000))
-      return { status: 'trial', trialDaysLeft: left }
+      return { status: 'trial', trialDaysLeft: left, trialEndsAt: new Date(end).toISOString() }
     }
-    return { status: 'expired', trialDaysLeft: 0 }
+    return { status: 'expired', trialDaysLeft: 0, trialEndsAt: null }
   }
-  return { status: user.status === 'canceled' ? 'canceled' : 'expired', trialDaysLeft: null }
+  return { status: user.status === 'canceled' ? 'canceled' : 'expired', trialDaysLeft: null, trialEndsAt: null }
 }
 
 export async function validateUserSession(req: NextRequest): Promise<SessionCheck> {

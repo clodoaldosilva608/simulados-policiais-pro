@@ -22,6 +22,8 @@ export interface SessionUser {
 export interface AccessInfo {
   status: 'active' | 'trial' | 'expired' | 'canceled'
   trialDaysLeft: number | null
+  /** ISO — fim exato do teste grátis (cronômetro de urgência) */
+  trialEndsAt?: string | null
 }
 
 export interface SessionState {

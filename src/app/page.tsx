@@ -5,6 +5,7 @@ import { Loader2, GraduationCap, ShieldCheck } from 'lucide-react'
 import { LandingPage } from '@/components/landing/landing-page'
 import { AccessScreen } from '@/components/simulado/access-screen'
 import { LibraryScreen, type SavedInfo, type DashboardStats } from '@/components/simulado/library-screen'
+import { PerformanceScreen, type PerfTab } from '@/components/simulado/performance-screen'
 import { WelcomeScreen, type AttemptInfo } from '@/components/simulado/welcome-screen'
 import { ExamScreen } from '@/components/simulado/exam-screen'
 import { ResultsScreen } from '@/components/simulado/results-screen'
@@ -19,6 +20,7 @@ import {
   type SimuladoPack,
 } from '@/data/simulado'
 import { useSession } from '@/lib/session'
+import { SITE } from '@/config/site'
 import {
   listLocalDocuments,
   getLocalDocument,
@@ -95,7 +97,7 @@ function displayNameOf(user: { name?: string; email?: string } | null | undefine
     .join(' ')
 }
 
-type Phase = 'landing' | 'access' | 'library' | 'welcome' | 'exam' | 'results' | 'review'
+type Phase = 'landing' | 'access' | 'library' | 'desempenho' | 'welcome' | 'exam' | 'results' | 'review'
 
 const storageKeyFor = (docId: string) => `simulado-${docId}`
 
@@ -250,6 +252,9 @@ export default function Home() {
 
   // Métricas do painel do aluno (acertos/erros em todos os simulados)
   const [stats, setStats] = useState<DashboardStats | null>(null)
+  // Histórico completo (tela Meu desempenho → aba Histórico)
+  const [allAttempts, setAllAttempts] = useState<LocalAttempt[]>([])
+  const [perfTab, setPerfTab] = useState<PerfTab>('resumo')
 
   // Simulado ativo
   const [pack, setPack] = useState<SimuladoPack | null>(null)
@@ -296,7 +301,10 @@ export default function Home() {
   const recomputeStats = useCallback(async () => {
     try {
       const all = await listAllLocalAttempts()
-      setStats(statsFromAttempts(all))
+      // Mais recentes primeiro (histórico)
+      const desc = [...all].sort((a, b) => (a.createdAt > b.createdAt ? -1 : 1))
+      setAllAttempts(desc)
+      setStats(statsFromAttempts(desc))
     } catch {
       /* métricas são opcionais */
     }
@@ -310,7 +318,10 @@ export default function Home() {
         const list = docs.length > 0 ? docs : await listLocalDocuments()
         await migrateLegacyFinishedStates(list)
         const all = await listAllLocalAttempts()
-        if (alive) setStats(statsFromAttempts(all))
+        if (!alive) return
+        const desc = [...all].sort((a, b) => (a.createdAt > b.createdAt ? -1 : 1))
+        setAllAttempts(desc)
+        setStats(statsFromAttempts(desc))
       } catch {
         /* métricas são opcionais */
       }
@@ -321,7 +332,11 @@ export default function Home() {
   }, [docs])
 
   // Fase inicial: sessão válida com acesso → biblioteca; conta sem acesso →
-  // tela de conta/ativação; sem sessão → landing
+  // tela de conta/ativação; sem sessão → landing.
+  // IMPORTANTE: NÃO força 'access' → 'library' — quando o aluno abre Minha
+  // conta pelo menu, o heartbeat (a cada 5 min) atualiza session.access e
+  // antes isso EXPULSAVA a pessoa da tela antes de ver seus dados. A volta
+  // da tela de acesso é sempre manual (Voltar / Entrar).
   useEffect(() => {
     if (session.loading) return
     setHydrated(true)
@@ -330,11 +345,12 @@ export default function Home() {
       session.access &&
       (session.access.status === 'trial' || session.access.status === 'active')
     if (has) {
-      setPhase((p) => (p === 'landing' || p === 'access' ? 'library' : p))
+      // só resgata quem ficou preso na landing — não mexe em acesso/desempenho
+      setPhase((p) => (p === 'landing' ? 'library' : p))
     } else if (session.authed) {
       // conta autenticada sem acesso: só pode navegar landing/acesso
       setPhase((p) =>
-        p === 'library' || p === 'welcome' || p === 'exam' || p === 'results' || p === 'review'
+        p === 'library' || p === 'desempenho' || p === 'welcome' || p === 'exam' || p === 'results' || p === 'review'
           ? 'access'
           : p,
       )
@@ -541,12 +557,36 @@ export default function Home() {
         licenseBadge={{
           active: session.access?.status === 'active',
           trialDaysLeft: session.access?.status === 'trial' ? (session.access.trialDaysLeft ?? 0) : null,
+          trialEndsAt: session.access?.trialEndsAt ?? null,
         }}
         accountEmail={session.user?.email}
         accountName={displayNameOf(session.user)}
         stats={stats}
         onManageAccess={() => setPhase('access')}
+        onOpenPerformance={(tab) => {
+          setPerfTab(tab)
+          setPhase('desempenho')
+        }}
         onSignOut={() => void session.logout()}
+      />
+    )
+  }
+
+  if (phase === 'desempenho') {
+    return (
+      <PerformanceScreen
+        initialTab={perfTab}
+        stats={stats}
+        attempts={allAttempts}
+        accountName={displayNameOf(session.user)}
+        accountEmail={session.user?.email}
+        licenseBadge={{
+          active: session.access?.status === 'active',
+          trialDaysLeft: session.access?.status === 'trial' ? (session.access.trialDaysLeft ?? 0) : null,
+          trialEndsAt: session.access?.trialEndsAt ?? null,
+        }}
+        onBack={() => setPhase('library')}
+        onSubscribe={() => window.open(SITE.checkoutUrl, '_blank', 'noopener,noreferrer')}
       />
     )
   }

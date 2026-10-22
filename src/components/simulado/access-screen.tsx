@@ -346,13 +346,41 @@ function AccountView({
   const access = session.access
   const status: 'active' | 'trial' | 'none' =
     access?.status === 'active' ? 'active' : access?.status === 'trial' ? 'trial' : 'none'
+  const initial =
+    (session.user?.name ?? session.user?.email ?? 'A').trim().charAt(0).toUpperCase() || 'A'
 
   return (
     <>
       <h1 className="text-2xl font-black tracking-tight text-slate-900">Minha conta</h1>
       <p className="mt-1.5 text-sm leading-relaxed text-slate-500">
-        Autenticado como <strong className="break-all">{session.user?.email}</strong>
+        Seus dados e o status do seu acesso neste aparelho.
       </p>
+
+      {/* Dados da conta */}
+      <Card className="mt-4">
+        <CardContent className="flex items-center gap-3 p-4">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-slate-900 text-lg font-bold text-amber-300">
+            {initial}
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-base font-bold text-slate-900">
+              {session.user?.name?.trim() || 'Aluno'}
+            </p>
+            <p className="break-all text-xs text-slate-500">{session.user?.email ?? '—'}</p>
+          </div>
+          <Badge
+            className={`shrink-0 ${
+              status === 'active'
+                ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-100'
+                : status === 'trial'
+                  ? 'bg-amber-100 text-amber-800 hover:bg-amber-100'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-100'
+            }`}
+          >
+            {status === 'active' ? 'Assinante' : status === 'trial' ? 'Teste grátis' : 'Sem acesso'}
+          </Badge>
+        </CardContent>
+      </Card>
 
       {session.blocked && (
         <div className="mt-4 flex items-start gap-2.5 rounded-xl border border-red-300 bg-red-50 p-3.5">
@@ -426,7 +454,7 @@ function AccountView({
                 {SITE.trialDays} dias grátis, sem cartão de crédito. Um teste por aparelho.
               </p>
             </div>
-            <TrialButton session={session} toast={toast} />
+            <TrialButton session={session} toast={toast} onDone={onDone} />
           </CardContent>
         </Card>
       )}
@@ -460,7 +488,15 @@ function AccountView({
   )
 }
 
-function TrialButton({ session, toast }: { session: SessionApi; toast: ReturnType<typeof useToast>['toast'] }) {
+function TrialButton({
+  session,
+  toast,
+  onDone,
+}: {
+  session: SessionApi
+  toast: ReturnType<typeof useToast>['toast']
+  onDone: () => void
+}) {
   const [busy, setBusy] = useState(false)
   return (
     <Button
@@ -470,6 +506,7 @@ function TrialButton({ session, toast }: { session: SessionApi; toast: ReturnTyp
           const res = await session.startTrial()
           if (res.ok) {
             toast({ title: 'Teste grátis iniciado!', description: `${SITE.trialDays} dias com tudo liberado.` })
+            onDone()
           } else {
             toast({ title: 'Teste indisponível', description: res.message ?? 'Tente novamente mais tarde.' })
           }

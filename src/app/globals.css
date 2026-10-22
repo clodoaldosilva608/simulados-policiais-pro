@@ -137,3 +137,84 @@
 .scroll-thin::-webkit-scrollbar-track {
   background: transparent;
 }
+
+/* ============================================================
+   MODO ESCURO — classe .dark no <html> (menu ☰ → Aparência).
+   Tokens alinhados ao slate para Sheet/Dialog/Input/Button;
+   utilitários literais das telas remapeados um a um.
+   O painel /admin já é dark com paleta própria (não usa as
+   classes abaixo) e o botão text-slate-950 sobre âmbar NÃO é
+   tocado de propósito (contraste do CTA).
+   ============================================================ */
+html.dark {
+  --background: #0f172a;
+  --foreground: #e2e8f0;
+  --card: #1e293b;
+  --card-foreground: #e2e8f0;
+  --popover: #1e293b;
+  --popover-foreground: #e2e8f0;
+  --primary: #e2e8f0;
+  --primary-foreground: #0f172a;
+  --secondary: #334155;
+  --secondary-foreground: #e2e8f0;
+  --muted: #334155;
+  --muted-foreground: #94a3b8;
+  --accent: #334155;
+  --accent-foreground: #e2e8f0;
+  --border: #334155;
+  --input: #475569;
+  --ring: #64748b;
+}
+
+html.dark body {
+  background-color: #0f172a;
+  color: #e2e8f0;
+}
+
+/* Fundos */
+html.dark .bg-slate-50 { background-color: #0f172a; }
+html.dark .bg-white { background-color: #1e293b; }
+html.dark .bg-slate-100 { background-color: #334155; }
+html.dark .bg-slate-200 { background-color: #46536b; }
+html.dark .bg-slate-50\/60 { background-color: rgba(51, 65, 85, 0.45); }
+html.dark .bg-slate-200\/70 { background-color: rgba(51, 65, 85, 0.8); }
+html.dark .bg-slate-100\/60 { background-color: rgba(51, 65, 85, 0.5); }
+html.dark .bg-emerald-50 { background-color: rgba(16, 185, 129, 0.14); }
+html.dark .bg-red-50 { background-color: rgba(239, 68, 68, 0.14); }
+html.dark .bg-amber-50 { background-color: rgba(245, 158, 11, 0.14); }
+html.dark .bg-amber-100 { background-color: rgba(245, 158, 11, 0.22); }
+html.dark .bg-emerald-100 { background-color: rgba(16, 185, 129, 0.22); }
+
+/* Bordas */
+html.dark .border-slate-100 { border-color: #263349; }
+html.dark .border-slate-200 { border-color: #334155; }
+html.dark .border-slate-300 { border-color: #475569; }
+html.dark .border-slate-800 { border-color: #1e293b; }
+html.dark .border-emerald-200 { border-color: rgba(16, 185, 129, 0.4); }
+html.dark .border-red-200 { border-color: rgba(239, 68, 68, 0.4); }
+html.dark .border-red-300 { border-color: rgba(239, 68, 68, 0.5); }
+html.dark .border-amber-200 { border-color: rgba(245, 158, 11, 0.4); }
+html.dark .border-amber-300 { border-color: rgba(245, 158, 11, 0.5); }
+
+/* Textos */
+html.dark .text-slate-900 { color: #f1f5f9; }
+html.dark .text-slate-800 { color: #e2e8f0; }
+html.dark .text-slate-700 { color: #cbd5e1; }
+html.dark .text-slate-600 { color: #a8b5c7; }
+html.dark .text-slate-500 { color: #94a3b8; }
+html.dark .text-slate-400 { color: #7c8aa0; }
+html.dark .text-emerald-900 { color: #a7f3d0; }
+html.dark .text-emerald-800 { color: #6ee7b7; }
+html.dark .text-emerald-700 { color: #34d399; }
+html.dark .text-red-900 { color: #fecaca; }
+html.dark .text-red-800 { color: #fca5a5; }
+html.dark .text-red-700 { color: #f87171; }
+html.dark .text-amber-900 { color: #fde68a; }
+html.dark .text-amber-800 { color: #fcd34d; }
+html.dark .text-amber-700 { color: #fbbf24; }
+
+/* Hovers utilitários usados em menus e botões */
+html.dark .hover\:bg-slate-100:hover { background-color: #334155; }
+html.dark .hover\:bg-slate-50:hover { background-color: #1e293b; }
+html.dark .hover\:bg-emerald-700:hover { background-color: #059669; }
+html.dark .hover\:bg-slate-800:hover { background-color: #0f172a; }
