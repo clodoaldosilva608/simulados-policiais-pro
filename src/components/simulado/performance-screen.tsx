@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
 import {
   ArrowLeft,
@@ -10,6 +10,7 @@ import {
   Crown,
   FileText,
   History,
+  SlidersHorizontal,
   Target,
   XCircle,
 } from 'lucide-react'
@@ -17,6 +18,15 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
+import { Slider } from '@/components/ui/slider'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { SITE } from '@/config/site'
 import type { LocalAttempt } from '@/lib/local-db'
 import { TrialCountdown } from './trial-countdown'
@@ -42,6 +52,26 @@ interface PerformanceScreenProps {
   licenseBadge: { active: boolean; trialDaysLeft: number | null; trialEndsAt?: string | null }
   onBack: () => void
   onSubscribe: () => void
+}
+
+/** Meta de aproveitamento por disciplina (persistida no aparelho) */
+const META_STORAGE_KEY = 'spp-metas-v1'
+const DEFAULT_META = 70
+type PeriodFilter = 'all' | '7d' | '30d'
+const PERIOD_LABEL: Record<Exclude<PeriodFilter, 'all'>, string> = {
+  '7d': 'últimos 7 dias',
+  '30d': 'últimos 30 dias',
+}
+
+function loadMetas(): Record<string, number> {
+  try {
+    const raw = localStorage.getItem(META_STORAGE_KEY)
+    if (!raw) return {}
+    const parsed = JSON.parse(raw) as unknown
+    return parsed && typeof parsed === 'object' ? (parsed as Record<string, number>) : {}
+  } catch {
+    return {}
+  }
 }
 
 function pctColor(pct: number): string {
@@ -105,6 +135,51 @@ export function PerformanceScreen({
   onSubscribe,
 }: PerformanceScreenProps) {
   const [tab, setTab] = useState<PerfTab>(initialTab)
+  const [period, setPeriod] = useState<PeriodFilter>('all')
+  const [metas, setMetas] = useState<Record<string, number>>({})
+  const [metaEdit, setMetaEdit] = useState<{ name: string; value: number } | null>(null)
+
+  // Metas ficam salvas no aparelho (mesma filosofia local-first do restante do app)
+  useEffect(() => {
+    setMetas(loadMetas())
+  }, [])
+
+  const metaOf = (name: string) => metas[name] ?? DEFAULT_META
+
+  function saveMeta(name: string, value: number | null) {
+    const next = { ...metas }
+    if (value == null) delete next[name]
+    else next[name] = value
+    setMetas(next)
+    try {
+      localStorage.setItem(META_STORAGE_KEY, JSON.stringify(next))
+    } catch {
+      /* persistência é opcional */
+    }
+  }
+
+  /** Histórico filtrado pelo período escolhido (mais recentes primeiro) */
+  const filteredAttempts = useMemo(() => {
+    if (period === 'all') return attempts
+    const min = Date.now() - (period === '7d' ? 7 : 30) * 86_400_000
+    return attempts.filter((a) => new Date(a.createdAt).getTime() >= min)
+  }, [attempts, period])
+
+  /** Resumo agregado do período filtrado (mesma régua do painel: % sobre respondidas) */
+  const periodSummary = useMemo(() => {
+    let answered = 0
+    let correct = 0
+    for (const a of filteredAttempts) {
+      const ans = typeof a.answered === 'number' ? a.answered : a.total
+      const clamped = Math.min(Math.max(ans, 0), a.total)
+      answered += clamped
+      correct += Math.min(Math.max(a.correct, 0), clamped)
+    }
+    return {
+      count: filteredAttempts.length,
+      pct: answered > 0 ? Math.round((correct / answered) * 100) : null,
+    }
+  }, [filteredAttempts])
 
   return (
     <div className="flex min-h-screen flex-col bg-slate-50">
@@ -187,21 +262,58 @@ export function PerformanceScreen({
                       <p className="text-xs font-bold uppercase tracking-wide text-slate-500">
                         Desempenho por disciplina
                       </p>
+                      <p className="mt-0.5 text-[11px] text-slate-500">
+                        Toque no ícone ao lado da nota para definir sua meta de aproveitamento
+                      </p>
                       <ul className="mt-3 space-y-2.5" aria-label="Aproveitamento por disciplina">
-                        {stats.subjects.map((s) => (
-                          <li key={s.name} className="rounded-xl border border-slate-100 bg-slate-50/60 px-3 py-2.5">
-                            <div className="flex items-baseline justify-between gap-2">
-                              <span className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-800">
-                                {s.name}
-                              </span>
-                              <span className={`shrink-0 text-sm font-bold ${pctColor(s.pct)}`}>{s.pct}%</span>
-                            </div>
-                            <Progress value={s.pct} className="mt-1.5 h-1.5" aria-label={`${s.name}: ${s.pct}%`} />
-                            <p className="mt-1 text-[11px] text-slate-500">
-                              {s.correct} de {s.answered} {s.answered === 1 ? 'questão' : 'questões'}
-                            </p>
-                          </li>
-                        ))}
+                        {stats.subjects.map((s) => {
+                          const meta = metaOf(s.name)
+                          const hit = s.pct >= meta
+                          const gap = Math.max(0, meta - s.pct)
+                          return (
+                            <li
+                              key={s.name}
+                              className="rounded-xl border border-slate-100 bg-slate-50/60 px-3 py-2.5"
+                            >
+                              <div className="flex items-center gap-2">
+                                <span className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-800">
+                                  {s.name}
+                                </span>
+                                <span className={`shrink-0 text-sm font-bold ${pctColor(s.pct)}`}>{s.pct}%</span>
+                                <button
+                                  type="button"
+                                  onClick={() => setMetaEdit({ name: s.name, value: meta })}
+                                  aria-label={`Definir meta de aproveitamento em ${s.name}`}
+                                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-200 hover:text-slate-700"
+                                >
+                                  <SlidersHorizontal className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                              <div className="relative mt-1.5">
+                                <Progress
+                                  value={s.pct}
+                                  className="h-1.5"
+                                  aria-label={`${s.name}: ${s.pct}% (meta ${meta}%)`}
+                                />
+                                <span
+                                  aria-hidden
+                                  className="meta-marker absolute -top-0.5 h-2.5 w-0.5 rounded-full bg-slate-900"
+                                  style={{ left: `calc(${Math.min(meta, 100)}% - 1px)` }}
+                                />
+                              </div>
+                              <p className="mt-1 text-[11px] text-slate-500">
+                                {s.correct} de {s.answered} {s.answered === 1 ? 'questão' : 'questões'} •{' '}
+                                {hit ? (
+                                  <span className="font-bold text-emerald-700">meta de {meta}% atingida</span>
+                                ) : (
+                                  <span className="font-bold text-amber-700">
+                                    faltam {gap} p.p. para a meta de {meta}%
+                                  </span>
+                                )}
+                              </p>
+                            </li>
+                          )
+                        })}
                       </ul>
                     </CardContent>
                   </Card>
@@ -238,9 +350,47 @@ export function PerformanceScreen({
           </motion.div>
         ) : (
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2 }}>
-            {attempts.length > 0 ? (
-              <ul className="mt-4 space-y-2.5" aria-label="Provas concluídas">
-                {attempts.map((a) => {
+            {/* Filtro por período */}
+            <div
+              className="mt-4 grid grid-cols-3 gap-1 rounded-xl border border-slate-200 bg-slate-100 p-1"
+              role="group"
+              aria-label="Filtrar provas por período"
+            >
+              {(
+                [
+                  ['all', 'Todas'],
+                  ['7d', '7 dias'],
+                  ['30d', '30 dias'],
+                ] as [PeriodFilter, string][]
+              ).map(([key, label]) => (
+                <button
+                  key={key}
+                  type="button"
+                  aria-pressed={period === key}
+                  onClick={() => setPeriod(key)}
+                  className={`flex h-9 items-center justify-center rounded-lg text-xs font-bold transition-colors ${
+                    period === key ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            {periodSummary.count > 0 && (
+              <p className="mt-2 text-xs text-slate-500" aria-live="polite">
+                {periodSummary.count} {periodSummary.count === 1 ? 'prova' : 'provas'}{' '}
+                {period === 'all' ? 'no histórico' : `nos ${PERIOD_LABEL[period]}`}
+                {periodSummary.pct != null && (
+                  <>
+                    {' '}• aproveitamento{' '}
+                    <span className={`font-bold ${pctColor(periodSummary.pct)}`}>{periodSummary.pct}%</span>
+                  </>
+                )}
+              </p>
+            )}
+            {filteredAttempts.length > 0 ? (
+              <ul className="mt-3 space-y-2.5" aria-label="Provas concluídas">
+                {filteredAttempts.map((a) => {
                   const ans = typeof a.answered === 'number' ? a.answered : a.total
                   // Aproveitamento sobre as RESPONDIDAS (mesma régua do painel)
                   const pct = ans > 0 ? Math.round((a.correct / ans) * 100) : 0
@@ -285,7 +435,7 @@ export function PerformanceScreen({
                   )
                 })}
               </ul>
-            ) : (
+            ) : attempts.length === 0 ? (
               <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-6 text-center">
                 <History className="mx-auto h-10 w-10 text-slate-300" />
                 <p className="mt-3 text-sm font-bold text-slate-800">Sem provas concluídas por aqui</p>
@@ -294,10 +444,90 @@ export function PerformanceScreen({
                   levou — assim fica fácil acompanhar sua evolução.
                 </p>
               </div>
+            ) : (
+              <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-6 text-center">
+                <History className="mx-auto h-10 w-10 text-slate-300" />
+                <p className="mt-3 text-sm font-bold text-slate-800">Nenhuma prova nos {PERIOD_LABEL[period]}</p>
+                <p className="mx-auto mt-1 max-w-sm text-xs leading-relaxed text-slate-500">
+                  Nenhuma prova foi concluída nesse período. Amplie o filtro para ver o histórico completo ou
+                  conclua um novo simulado para acompanhar sua evolução.
+                </p>
+                <Button variant="outline" className="mt-4" onClick={() => setPeriod('all')}>
+                  Ver todos os períodos
+                </Button>
+              </div>
             )}
           </motion.div>
         )}
       </main>
+
+      {/* Editor da meta de aproveitamento por disciplina */}
+      <Dialog open={metaEdit !== null} onOpenChange={(open) => (open ? undefined : setMetaEdit(null))}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Meta de aproveitamento</DialogTitle>
+            <DialogDescription>
+              Defina a nota mínima que você quer alcançar em{' '}
+              <span className="font-semibold text-slate-900">{metaEdit?.name ?? '—'}</span>. A barra de desempenho
+              mostra a marcação da meta para facilitar a comparação.
+            </DialogDescription>
+          </DialogHeader>
+          {metaEdit && (
+            <div className="space-y-4">
+              <div className="flex items-baseline justify-center gap-1 rounded-xl border border-slate-200 bg-slate-50 py-3">
+                <span className="text-3xl font-black text-slate-900">{metaEdit.value}</span>
+                <span className="text-lg font-bold text-slate-500">%</span>
+              </div>
+              <div className="grid grid-cols-4 gap-2">
+                {[60, 70, 80, 90].map((v) => (
+                  <button
+                    key={v}
+                    type="button"
+                    aria-pressed={metaEdit.value === v}
+                    onClick={() => setMetaEdit({ ...metaEdit, value: v })}
+                    className={`h-9 rounded-lg border text-sm font-bold transition-colors ${
+                      metaEdit.value === v
+                        ? 'border-slate-900 bg-slate-900 text-white'
+                        : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-100'
+                    }`}
+                  >
+                    {v}%
+                  </button>
+                ))}
+              </div>
+              <Slider
+                value={[metaEdit.value]}
+                min={40}
+                max={100}
+                step={5}
+                onValueChange={([v]) => setMetaEdit({ ...metaEdit, value: v })}
+                aria-label="Ajustar meta de aproveitamento"
+              />
+            </div>
+          )}
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                if (!metaEdit) return
+                saveMeta(metaEdit.name, null)
+                setMetaEdit(null)
+              }}
+            >
+              Padrão (70%)
+            </Button>
+            <Button
+              onClick={() => {
+                if (!metaEdit) return
+                saveMeta(metaEdit.name, metaEdit.value)
+                setMetaEdit(null)
+              }}
+            >
+              Salvar meta
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

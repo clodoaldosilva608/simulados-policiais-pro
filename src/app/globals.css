@@ -218,3 +218,6 @@ html.dark .hover\:bg-slate-100:hover { background-color: #334155; }
 html.dark .hover\:bg-slate-50:hover { background-color: #1e293b; }
 html.dark .hover\:bg-emerald-700:hover { background-color: #059669; }
 html.dark .hover\:bg-slate-800:hover { background-color: #0f172a; }
+
+/* Marcador da meta de aproveitamento na barra por disciplina (claro = visível no escuro) */
+html.dark .meta-marker { background-color: #f1f5f9; }
