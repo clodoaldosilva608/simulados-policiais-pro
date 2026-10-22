@@ -17,10 +17,12 @@ import {
   RotateCcw,
   ShieldCheck,
   Sparkles,
+  Target,
   Trash2,
   Upload,
   CheckCheck,
   ListOrdered,
+  XCircle,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -50,6 +52,15 @@ export interface SavedInfo {
   finished: boolean
 }
 
+/** Métricas de desempenho do aluno (painel da biblioteca) */
+export interface DashboardStats {
+  attempts: number
+  answered: number
+  correct: number
+  wrong: number
+  pct: number
+}
+
 type FormatFilter = 'todos' | 'certo_errado' | 'multipla_escolha'
 
 interface LibraryScreenProps {
@@ -63,6 +74,10 @@ interface LibraryScreenProps {
   licenseBadge: { active: boolean; trialDaysLeft: number | null }
   /** E-mail da conta autenticada (badge do cabeçalho) */
   accountEmail?: string
+  /** Primeiro nome do aluno (saudação no painel) */
+  accountName?: string
+  /** Métricas de acertos/erros de todos os simulados concluídos */
+  stats?: DashboardStats | null
   /** Abre a tela de acesso/gerenciar assinatura */
   onManageAccess: () => void
 }
@@ -88,6 +103,36 @@ const CARREIRA_ICONS: Record<string, typeof ShieldCheck> = {
   PM: ShieldCheck,
   PRF: ShieldCheck,
   'Polícia Penal': BadgeCheck,
+}
+
+function StatCard({
+  icon: Icon,
+  label,
+  value,
+  tone,
+}: {
+  icon: typeof CheckCircle2
+  label: string
+  value: string
+  tone: 'emerald' | 'red' | 'amber' | 'slate'
+}) {
+  const tones: Record<typeof tone, string> = {
+    emerald: 'bg-emerald-50 text-emerald-700',
+    red: 'bg-red-50 text-red-700',
+    amber: 'bg-amber-50 text-amber-700',
+    slate: 'bg-slate-100 text-slate-700',
+  }
+  return (
+    <div className="flex items-center gap-3 rounded-xl border border-slate-100 bg-white p-3">
+      <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${tones[tone]}`}>
+        <Icon className="h-5 w-5" />
+      </div>
+      <div className="min-w-0">
+        <p className="text-lg font-bold leading-tight text-slate-900">{value}</p>
+        <p className="truncate text-[11px] font-medium uppercase tracking-wide text-slate-500">{label}</p>
+      </div>
+    </div>
+  )
 }
 
 function OfficialPackCard({
@@ -192,6 +237,8 @@ export function LibraryScreen({
   onUploadCompleted,
   licenseBadge,
   accountEmail,
+  accountName,
+  stats,
   onManageAccess,
 }: LibraryScreenProps) {
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -233,6 +280,8 @@ export function LibraryScreen({
     return OFFICIAL_PACKS.filter((p) => p.questionFormat === formatFilter)
   }, [formatFilter])
 
+  const avatarInitial = (accountName ?? '').trim().charAt(0).toUpperCase() || 'A'
+
   const readyDocs = docs.filter((d) => d.status === 'ready')
   const otherDocs = docs.filter((d) => d.status !== 'ready')
 
@@ -261,7 +310,10 @@ export function LibraryScreen({
               type="button"
               onClick={onManageAccess}
               aria-label="Gerenciar conta e assinatura"
-              title={accountEmail ? `Conta: ${accountEmail}` : 'Gerenciar conta'}
+              title={
+                accountName || accountEmail
+                  ? `Conta: ${[accountName, accountEmail].filter(Boolean).join(' • ')}`
+                  : 'Gerenciar conta'}
               className={`shrink-0 whitespace-nowrap rounded-full px-2.5 py-1.5 text-[11px] font-bold transition-colors sm:px-3 ${
                 licenseBadge.active
                   ? 'bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25'
@@ -296,6 +348,47 @@ export function LibraryScreen({
       </header>
 
       <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6">
+        {/* Painel do aluno — saudação + métricas de acertos/erros */}
+        {accountName && (
+          <section aria-label="Meu desempenho" className="mb-6">
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="flex items-center gap-3">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-slate-900 text-base font-bold text-amber-300">
+                  {avatarInitial}
+                </div>
+                <div className="min-w-0">
+                  <p className="truncate text-lg font-bold leading-tight text-slate-900">Olá, {accountName}</p>
+                  <p className="text-xs text-slate-500">
+                    Seu desempenho em todos os simulados concluídos neste aparelho
+                  </p>
+                </div>
+              </div>
+              {stats && stats.answered > 0 ? (
+                <>
+                  <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+                    <StatCard icon={CheckCircle2} label="Acertos" value={String(stats.correct)} tone="emerald" />
+                    <StatCard icon={XCircle} label="Erros" value={String(stats.wrong)} tone="red" />
+                    <StatCard icon={Target} label="Aproveitamento" value={`${stats.pct}%`} tone="amber" />
+                    <StatCard icon={BookOpen} label="Simulados concluídos" value={String(stats.attempts)} tone="slate" />
+                  </div>
+                  <div className="mt-4">
+                    <div className="flex items-center justify-between text-xs font-medium text-slate-500">
+                      <span>Taxa de acerto geral</span>
+                      <span className="font-bold text-slate-900">{stats.pct}%</span>
+                    </div>
+                    <Progress value={stats.pct} className="mt-1.5 h-2" aria-label={`Taxa de acerto: ${stats.pct}%`} />
+                  </div>
+                </>
+              ) : (
+                <p className="mt-4 rounded-xl bg-slate-50 px-4 py-3 text-sm leading-relaxed text-slate-500">
+                  Você ainda não concluiu nenhum simulado neste aparelho. Inicie uma prova oficial (PF, PC, PM, PRF ou
+                  Polícia Penal) ou transforme um PDF em simulado — seus acertos e erros aparecerão aqui.
+                </p>
+              )}
+            </div>
+          </section>
+        )}
+
         {/* Provas oficiais — Área Policial */}
         <section>
           <div className="flex flex-wrap items-center gap-3">

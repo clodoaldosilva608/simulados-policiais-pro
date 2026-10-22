@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Loader2, GraduationCap, ShieldCheck } from 'lucide-react'
 import { LandingPage } from '@/components/landing/landing-page'
 import { AccessScreen } from '@/components/simulado/access-screen'
-import { LibraryScreen, type SavedInfo } from '@/components/simulado/library-screen'
+import { LibraryScreen, type SavedInfo, type DashboardStats } from '@/components/simulado/library-screen'
 import { WelcomeScreen, type AttemptInfo } from '@/components/simulado/welcome-screen'
 import { ExamScreen } from '@/components/simulado/exam-screen'
 import { ResultsScreen } from '@/components/simulado/results-screen'
@@ -25,10 +25,41 @@ import {
   deleteLocalDocument,
   addLocalAttempt,
   listLocalAttempts,
+  listAllLocalAttempts,
+  hasAttemptWithId,
   localDocToPack,
+  type LocalAttempt,
 } from '@/lib/local-db'
 
-const STATIC_IDS = new Set(STATIC_PACKS.map((p) => p.id))
+function statsFromAttempts(attempts: LocalAttempt[]): DashboardStats {
+  let answered = 0
+  let correct = 0
+  for (const a of attempts) {
+    const ans = typeof a.answered === 'number' ? a.answered : a.total
+    answered += Math.min(Math.max(ans, 0), a.total)
+    correct += Math.min(Math.max(a.correct, 0), a.total)
+  }
+  const wrong = Math.max(0, answered - correct)
+  const pct = answered > 0 ? Math.round((correct / answered) * 100) : 0
+  return { attempts: attempts.length, answered, correct, wrong, pct }
+}
+
+/** Nome para exibição: nome cadastrado ou deriva do e-mail */
+function displayNameOf(user: { name?: string; email?: string } | null | undefined): string {
+  const n = user?.name?.trim()
+  if (n) return n.split(/\s+/)[0]
+  const prefix = (user?.email ?? '').split('@')[0] ?? ''
+  const words = prefix
+    .replace(/[._\-+0-9]+/g, ' ')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+  if (words.length === 0) return 'Aluno'
+  return words
+    .slice(0, 2)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .join(' ')
+}
 
 type Phase = 'landing' | 'access' | 'library' | 'welcome' | 'exam' | 'results' | 'review'
 
@@ -44,6 +75,56 @@ function freshState(name: string, mode: ExamMode): ExamState {
     current: 0,
     answers: {},
     marked: [],
+  }
+}
+
+/**
+ * Migração: estados finalizados no localStorage (provas oficiais e PDFs)
+ * que ainda não viraram tentativa no banco local ganham uma tentativa —
+ * assim o painel de métricas inclui o histórico anterior à atualização.
+ */
+async function migrateLegacyFinishedStates(docs: { id: string; title: string }[]): Promise<void> {
+  if (typeof window === 'undefined') return
+  const titles = new Map<string, string>()
+  for (const p of STATIC_PACKS) titles.set(p.id, p.title)
+  for (const d of docs) titles.set(d.id, d.title)
+  for (const docId of titles.keys()) {
+    try {
+      const raw = window.localStorage.getItem(storageKeyFor(docId))
+      if (!raw) continue
+      const parsed = JSON.parse(raw) as Partial<ExamState>
+      if (!parsed?.finished || typeof parsed.finishedAt !== 'number') continue
+      const attemptId = `att-mig-${docId}-${parsed.finishedAt}`
+      if (await hasAttemptWithId(attemptId)) continue
+      let questions: { id: string; answer: OptionKey }[] | null = null
+      const staticPack = getStaticPack(docId)
+      if (staticPack) {
+        questions = staticPack.questions
+      } else {
+        const doc = await getLocalDocument(docId)
+        if (doc) questions = doc.questions
+      }
+      if (!questions || questions.length === 0) continue
+      const answers = parsed.answers ?? {}
+      const correct = questions.filter((q) => answers[q.id] === q.answer).length
+      const answered = questions.filter((q) => answers[q.id]).length
+      const total = questions.length
+      await addLocalAttempt({
+        id: attemptId,
+        docId,
+        name: parsed.name ?? '',
+        title: titles.get(docId),
+        mode: parsed.mode === 'estudo' ? 'estudo' : 'prova',
+        correct,
+        answered,
+        total,
+        pct: total > 0 ? Math.round((correct / total) * 100) : 0,
+        timeUsedMs: Math.max(0, parsed.finishedAt - (parsed.startedAt ?? parsed.finishedAt)),
+        createdAt: new Date(parsed.finishedAt).toISOString(),
+      })
+    } catch {
+      /* migração é best-effort */
+    }
   }
 }
 
@@ -95,6 +176,9 @@ export default function Home() {
   const [docsLoading, setDocsLoading] = useState(true)
   const [savedInfo, setSavedInfo] = useState<Record<string, SavedInfo>>({})
 
+  // Métricas do painel do aluno (acertos/erros em todos os simulados)
+  const [stats, setStats] = useState<DashboardStats | null>(null)
+
   // Simulado ativo
   const [pack, setPack] = useState<SimuladoPack | null>(null)
   const [packLoading, setPackLoading] = useState(false)
@@ -136,6 +220,33 @@ export default function Home() {
       setDocsLoading(false)
     }
   }, [refreshSavedInfo])
+
+  const recomputeStats = useCallback(async () => {
+    try {
+      const all = await listAllLocalAttempts()
+      setStats(statsFromAttempts(all))
+    } catch {
+      /* métricas são opcionais */
+    }
+  }, [])
+
+  // Métricas: migra estados antigos e soma todas as tentativas do aparelho
+  useEffect(() => {
+    let alive = true
+    void (async () => {
+      try {
+        const list = docs.length > 0 ? docs : await listLocalDocuments()
+        await migrateLegacyFinishedStates(list)
+        const all = await listAllLocalAttempts()
+        if (alive) setStats(statsFromAttempts(all))
+      } catch {
+        /* métricas são opcionais */
+      }
+    })()
+    return () => {
+      alive = false
+    }
+  }, [docs])
 
   // Fase inicial: sessão válida com acesso → biblioteca; conta sem acesso →
   // tela de conta/ativação; sem sessão → landing
@@ -248,30 +359,29 @@ export default function Home() {
   }
 
   const handleFinish = useCallback(() => {
-    setState((s) => {
-      if (!s || s.finished) return s
-      const finished = { ...s, finished: true, finishedAt: Date.now() }
-      // Registra a tentativa no banco LOCAL (apenas simulados de PDF)
-      if (pack && !STATIC_IDS.has(pack.id)) {
-        const total = pack.questions.length
-        const correct = pack.questions.filter((q) => finished.answers[q.id] === q.answer).length
-        void addLocalAttempt({
-          id: `att-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-          docId: pack.id,
-          name: finished.name,
-          mode: finished.mode,
-          correct,
-          total,
-          pct: total > 0 ? Math.round((correct / total) * 100) : 0,
-          timeUsedMs: (finished.finishedAt ?? Date.now()) - finished.startedAt,
-          createdAt: new Date().toISOString(),
-        })
-      }
-      return finished
-    })
+    if (!state || state.finished || !pack) return
+    const finished: ExamState = { ...state, finished: true, finishedAt: Date.now() }
+    setState(finished)
+    // Registra a tentativa no banco LOCAL (provas oficiais e simulados de PDF)
+    const total = pack.questions.length
+    const correct = pack.questions.filter((q) => finished.answers[q.id] === q.answer).length
+    const answered = pack.questions.filter((q) => finished.answers[q.id]).length
+    void addLocalAttempt({
+      id: `att-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      docId: pack.id,
+      name: finished.name,
+      title: pack.title,
+      mode: finished.mode,
+      correct,
+      answered,
+      total,
+      pct: total > 0 ? Math.round((correct / total) * 100) : 0,
+      timeUsedMs: (finished.finishedAt ?? Date.now()) - finished.startedAt,
+      createdAt: new Date().toISOString(),
+    }).then(() => void recomputeStats())
     setSavedMeta((m) => ({ finished: true, mode: m?.mode ?? 'prova', name: m?.name ?? '' }))
     setPhase('results')
-  }, [pack])
+  }, [state, pack, recomputeStats])
 
   const handleDelete = useCallback(
     async (docId: string) => {
@@ -286,8 +396,9 @@ export default function Home() {
         /* noop */
       }
       void loadDocs()
+      void recomputeStats()
     },
-    [loadDocs]
+    [loadDocs, recomputeStats]
   )
 
   // Heartbeat: o hook useSession já verifica /api/auth/me a cada 5 min e ao
@@ -358,6 +469,8 @@ export default function Home() {
           trialDaysLeft: session.access?.status === 'trial' ? (session.access.trialDaysLeft ?? 0) : null,
         }}
         accountEmail={session.user?.email}
+        accountName={displayNameOf(session.user)}
+        stats={stats}
         onManageAccess={() => setPhase('access')}
       />
     )
