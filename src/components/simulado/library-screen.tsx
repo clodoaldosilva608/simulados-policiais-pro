@@ -59,6 +59,8 @@ export interface DashboardStats {
   correct: number
   wrong: number
   pct: number
+  /** Aproveitamento por disciplina (mais respondidas primeiro) */
+  subjects: { name: string; correct: number; answered: number; pct: number }[]
 }
 
 type FormatFilter = 'todos' | 'certo_errado' | 'multipla_escolha'
@@ -378,6 +380,42 @@ export function LibraryScreen({
                     </div>
                     <Progress value={stats.pct} className="mt-1.5 h-2" aria-label={`Taxa de acerto: ${stats.pct}%`} />
                   </div>
+                  {stats.subjects.length > 0 && (
+                    <div className="mt-5">
+                      <p className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                        Desempenho por disciplina
+                      </p>
+                      <ul className="mt-2.5 grid gap-2.5 sm:grid-cols-2" aria-label="Aproveitamento por disciplina">
+                        {stats.subjects.map((s) => (
+                          <li
+                            key={s.name}
+                            className="rounded-xl border border-slate-100 bg-slate-50/60 px-3 py-2.5"
+                          >
+                            <div className="flex items-baseline justify-between gap-2">
+                              <span className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-800">
+                                {s.name}
+                              </span>
+                              <span
+                                className={`shrink-0 text-sm font-bold ${
+                                  s.pct >= 70 ? 'text-emerald-700' : s.pct >= 50 ? 'text-amber-700' : 'text-red-700'
+                                }`}
+                              >
+                                {s.pct}%
+                              </span>
+                            </div>
+                            <Progress
+                              value={s.pct}
+                              className="mt-1.5 h-1.5"
+                              aria-label={`${s.name}: ${s.pct}% de acerto`}
+                            />
+                            <p className="mt-1 text-[11px] text-slate-500">
+                              {s.correct} de {s.answered} {s.answered === 1 ? 'questão' : 'questões'}
+                            </p>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
                 </>
               ) : (
                 <p className="mt-4 rounded-xl bg-slate-50 px-4 py-3 text-sm leading-relaxed text-slate-500">

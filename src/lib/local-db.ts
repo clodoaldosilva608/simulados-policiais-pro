@@ -43,6 +43,12 @@ export interface LocalAttempt {
   name: string
   /** Título do simulado (exibido no histórico/dashboard) */
   title?: string
+  /**
+   * Desempenho por DISCIPLINA desta tentativa (chave = nome exibido da
+   * disciplina, ex.: "Direito Constitucional") — base das métricas por
+   * disciplina do painel do aluno.
+   */
+  bySubject?: Record<string, { correct: number; answered: number }>
   mode: 'prova' | 'estudo'
   correct: number
   /** Questões respondidas (podem ser menos que o total em modo prova) */

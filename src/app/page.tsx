@@ -45,14 +45,37 @@ function statsFromAttempts(attempts: LocalAttempt[]): DashboardStats {
   }
   let answered = 0
   let correct = 0
+  const subjects = new Map<string, { correct: number; answered: number }>()
   for (const a of unique) {
     const ans = typeof a.answered === 'number' ? a.answered : a.total
     answered += Math.min(Math.max(ans, 0), a.total)
     correct += Math.min(Math.max(a.correct, 0), a.total)
+    // Agrega métricas por disciplina (tentativas antigas podem não ter bySubject)
+    if (a.bySubject) {
+      for (const [name, agg] of Object.entries(a.bySubject)) {
+        if (!agg || typeof agg.answered !== 'number') continue
+        let acc = subjects.get(name)
+        if (!acc) {
+          acc = { correct: 0, answered: 0 }
+          subjects.set(name, acc)
+        }
+        acc.answered += Math.max(0, agg.answered)
+        acc.correct += Math.min(Math.max(agg.correct ?? 0, 0), agg.answered)
+      }
+    }
   }
   const wrong = Math.max(0, answered - correct)
   const pct = answered > 0 ? Math.round((correct / answered) * 100) : 0
-  return { attempts: unique.length, answered, correct, wrong, pct }
+  // Lista por disciplina: mais respondidas primeiro; empate → menor aproveitamento
+  const subjectStats = [...subjects.entries()]
+    .map(([name, agg]) => ({
+      name,
+      correct: agg.correct,
+      answered: agg.answered,
+      pct: agg.answered > 0 ? Math.round((agg.correct / agg.answered) * 100) : 0,
+    }))
+    .sort((x, y) => y.answered - x.answered || x.pct - y.pct || x.name.localeCompare(y.name))
+  return { attempts: unique.length, answered, correct, wrong, pct, subjects: subjectStats }
 }
 
 /** Nome para exibição: nome cadastrado ou deriva do e-mail */
@@ -89,6 +112,34 @@ function freshState(name: string, mode: ExamMode): ExamState {
   }
 }
 
+/** Mapa subjectId → nome de exibição da disciplina (packs oficiais) */
+function subjectNameMap(pack: SimuladoPack): Map<string, string> {
+  const map = new Map<string, string>()
+  for (const s of pack.subjects) map.set(s.id, s.name || s.id)
+  return map
+}
+
+/**
+ * Desempenho por disciplina de uma tentativa (chave = nome exibido).
+ * Disciplinas de PDFs já vêm com subjectId = nome — aí o mapa é nulo.
+ */
+function bySubjectFrom(
+  questions: { id: string; answer: OptionKey; subjectId: string }[],
+  answers: Record<string, OptionKey>,
+  subjectNames: Map<string, string> | null,
+): Record<string, { correct: number; answered: number }> {
+  const out: Record<string, { correct: number; answered: number }> = {}
+  for (const q of questions) {
+    const given = answers[q.id]
+    if (!given) continue
+    const name = subjectNames?.get(q.subjectId) ?? q.subjectId
+    const agg = (out[name] ??= { correct: 0, answered: 0 })
+    agg.answered += 1
+    if (given === q.answer) agg.correct += 1
+  }
+  return out
+}
+
 /**
  * Migração: estados finalizados no localStorage (provas oficiais e PDFs)
  * que ainda não viraram tentativa no banco local ganham uma tentativa —
@@ -114,13 +165,15 @@ async function migrateLegacyFinishedStates(docs: { id: string; title: string }[]
         (a) => Math.abs(new Date(a.createdAt).getTime() - parsed.finishedAt!) < 60_000,
       )
       if (alreadyRecorded) continue
-      let questions: { id: string; answer: OptionKey }[] | null = null
+      let questions: { id: string; answer: OptionKey; subjectId: string }[] | null = null
+      let subjectNames: Map<string, string> | null = null
       const staticPack = getStaticPack(docId)
       if (staticPack) {
         questions = staticPack.questions
+        subjectNames = subjectNameMap(staticPack)
       } else {
         const doc = await getLocalDocument(docId)
-        if (doc) questions = doc.questions
+        if (doc) questions = doc.questions // PDFs: subjectId já é o nome
       }
       if (!questions || questions.length === 0) continue
       const answers = parsed.answers ?? {}
@@ -132,6 +185,7 @@ async function migrateLegacyFinishedStates(docs: { id: string; title: string }[]
         docId,
         name: parsed.name ?? '',
         title: titles.get(docId),
+        bySubject: bySubjectFrom(questions, answers, subjectNames),
         mode: parsed.mode === 'estudo' ? 'estudo' : 'prova',
         correct,
         answered,
@@ -384,11 +438,13 @@ export default function Home() {
     const total = pack.questions.length
     const correct = pack.questions.filter((q) => finished.answers[q.id] === q.answer).length
     const answered = pack.questions.filter((q) => finished.answers[q.id]).length
+    const bySubject = bySubjectFrom(pack.questions, finished.answers, subjectNameMap(pack))
     void addLocalAttempt({
       id: `att-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       docId: pack.id,
       name: finished.name,
       title: pack.title,
+      bySubject,
       mode: finished.mode,
       correct,
       answered,
