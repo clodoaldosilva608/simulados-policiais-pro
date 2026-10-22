@@ -8,6 +8,7 @@ import {
   Clock,
   KeyRound,
   Loader2,
+  Mail,
   ShieldCheck,
   Sparkles,
 } from 'lucide-react'
@@ -35,26 +36,30 @@ interface AccessScreenProps {
   /** Licença atual (null quando não há) */
   license: LicenseState | null
   onBack: () => void
-  /** Ativação validada com sucesso */
-  onActivated: (code: string) => void
+  /** Ativação validada com sucesso (identificador = e-mail ou código) */
+  onActivated: (id: string) => void
   /** Iniciar/continuar teste grátis */
   onStartTrial: () => void
   /** Remove a licença deste aparelho */
   onSignOut: () => void
 }
 
+type Modo = 'email' | 'codigo'
+
 export function AccessScreen({ license, onBack, onActivated, onStartTrial, onSignOut }: AccessScreenProps) {
   const { toast } = useToast()
+  const [modo, setModo] = useState<Modo>('email')
+  const [email, setEmail] = useState('')
   const [code, setCode] = useState('')
   const [checking, setChecking] = useState(false)
   const [error, setError] = useState('')
-  const [serverConfigured, setServerConfigured] = useState<boolean | null>(null)
+  const [serverCakto, setServerCakto] = useState<boolean | null>(null)
 
   useEffect(() => {
     fetch('/api/license')
       .then((r) => (r.ok ? r.json() : null))
-      .then((d: { configured?: boolean } | null) => setServerConfigured(Boolean(d?.configured)))
-      .catch(() => setServerConfigured(null))
+      .then((d: { cakto?: boolean } | null) => setServerCakto(Boolean(d?.cakto)))
+      .catch(() => setServerCakto(null))
   }, [])
 
   // Já está em teste grátis (mesmo expirado mostramos situação)
@@ -62,13 +67,46 @@ export function AccessScreen({ license, onBack, onActivated, onStartTrial, onSig
     license?.status === 'trial' && license.trialStartedAt && trialDaysLeft(license) > 0
 
   const handleActivate = async () => {
+    setError('')
+
+    if (modo === 'email') {
+      const cleanEmail = email.trim().toLowerCase()
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+        setError('Digite o e-mail que você usou na compra na Cakto.')
+        return
+      }
+      setChecking(true)
+      try {
+        const res = await fetch('/api/license', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: cleanEmail }),
+        })
+        const data = (await res.json()) as { valid?: boolean; message?: string }
+        if (data.valid) {
+          toast({
+            title: 'Acesso ativado!',
+            description: 'Assinatura ativa confirmada neste aparelho. Bons estudos!',
+          })
+          onActivated(cleanEmail)
+        } else {
+          setError(data.message ?? 'Não encontramos assinatura ativa para este e-mail.')
+        }
+      } catch {
+        setError('Não foi possível verificar agora. Verifique sua conexão e tente novamente.')
+      } finally {
+        setChecking(false)
+      }
+      return
+    }
+
+    // modo código
     const clean = code.trim().toUpperCase()
     if (!clean) {
       setError('Digite o código que você recebeu por e-mail após a compra.')
       return
     }
     setChecking(true)
-    setError('')
     try {
       const res = await fetch('/api/license', {
         method: 'POST',
@@ -116,7 +154,8 @@ export function AccessScreen({ license, onBack, onActivated, onStartTrial, onSig
         <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
           <h1 className="text-2xl font-black tracking-tight text-slate-900">Acessar minha conta</h1>
           <p className="mt-1.5 text-sm leading-relaxed text-slate-500">
-            Ative o código recebido por e-mail após a confirmação do pagamento na Cakto, ou continue no teste grátis.
+            Assinou na Cakto? Ative com o <strong>e-mail da compra</strong> — a verificação é automática. Ou use um
+            código de acesso.
           </p>
 
           {/* Status de assinante */}
@@ -127,7 +166,7 @@ export function AccessScreen({ license, onBack, onActivated, onStartTrial, onSig
                   <BadgeCheck className="h-6 w-6 shrink-0 text-emerald-600" />
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-bold text-emerald-900">Assinatura ativa neste aparelho</p>
-                    <p className="truncate font-mono text-xs text-emerald-700">{license.code}</p>
+                    <p className="truncate text-xs text-emerald-700">{license.code}</p>
                   </div>
                   <Button
                     onClick={onBack}
@@ -142,7 +181,7 @@ export function AccessScreen({ license, onBack, onActivated, onStartTrial, onSig
                       type="button"
                       className="text-xs font-semibold text-emerald-800 underline underline-offset-2 hover:text-emerald-950"
                     >
-                      Usar outro código / sair deste aparelho
+                      Usar outro acesso / sair deste aparelho
                     </button>
                   </AlertDialogTrigger>
                   <AlertDialogContent>
@@ -150,7 +189,7 @@ export function AccessScreen({ license, onBack, onActivated, onStartTrial, onSig
                       <AlertDialogTitle>Sair deste aparelho?</AlertDialogTitle>
                       <AlertDialogDescription>
                         O acesso deste aparelho será removido. Seu progresso de estudos e PDFs salvos continuam no
-                        aparelho, mas você precisará de um código válido para voltar a usar o app.
+                        aparelho, mas você precisará ativar novamente para voltar a usar o app.
                       </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
@@ -197,7 +236,7 @@ export function AccessScreen({ license, onBack, onActivated, onStartTrial, onSig
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-bold text-slate-700">Teste grátis encerrado</p>
                       <p className="text-xs text-slate-500">
-                        Ative sua assinatura com o código de compra para continuar estudando.
+                        Ative sua assinatura com o e-mail da compra para continuar estudando.
                       </p>
                     </div>
                   </>
@@ -206,63 +245,153 @@ export function AccessScreen({ license, onBack, onActivated, onStartTrial, onSig
             </Card>
           )}
 
-          {/* Ativar código */}
-          <Card className="mt-5">
+          {/* Alternador e-mail | código */}
+          <div className="mt-5 grid grid-cols-2 gap-1 rounded-xl border border-slate-200 bg-slate-100 p-1">
+            <button
+              type="button"
+              onClick={() => {
+                setModo('email')
+                setError('')
+              }}
+              aria-pressed={modo === 'email'}
+              className={`flex h-10 items-center justify-center gap-1.5 rounded-lg text-xs font-bold transition-colors sm:text-sm ${
+                modo === 'email' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              <Mail className="h-4 w-4" /> E-mail da compra
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setModo('codigo')
+                setError('')
+              }}
+              aria-pressed={modo === 'codigo'}
+              className={`flex h-10 items-center justify-center gap-1.5 rounded-lg text-xs font-bold transition-colors sm:text-sm ${
+                modo === 'codigo' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              <KeyRound className="h-4 w-4" /> Código de acesso
+            </button>
+          </div>
+
+          <Card className="mt-3">
             <CardContent className="space-y-4 p-5">
-              <div className="flex items-center gap-2">
-                <KeyRound className="h-5 w-5 text-amber-500" />
-                <h2 className="text-base font-bold text-slate-900">Tenho um código de acesso</h2>
-                <Badge className="ml-auto gap-1 bg-amber-100 text-amber-800 hover:bg-amber-100">
-                  <BadgeCheck className="h-3 w-3" /> Assinantes
-                </Badge>
-              </div>
+              {modo === 'email' ? (
+                <>
+                  <div className="flex items-center gap-2">
+                    <Mail className="h-5 w-5 text-amber-500" />
+                    <h2 className="text-base font-bold text-slate-900">Ativar com e-mail da compra</h2>
+                    <Badge className="ml-auto gap-1 bg-emerald-100 text-emerald-800 hover:bg-emerald-100">
+                      <BadgeCheck className="h-3 w-3" /> Recomendado
+                    </Badge>
+                  </div>
 
-              <div className="space-y-1.5">
-                <Label htmlFor="access-code" className="text-sm font-medium text-slate-700">
-                  Código de acesso
-                </Label>
-                <Input
-                  id="access-code"
-                  placeholder="SPP-XXXX-XXXX-XXXX"
-                  value={code}
-                  onChange={(e) => {
-                    setCode(e.target.value.toUpperCase())
-                    setError('')
-                  }}
-                  onKeyDown={(e) => e.key === 'Enter' && !checking && void handleActivate()}
-                  autoCapitalize="characters"
-                  autoCorrect="off"
-                  spellCheck={false}
-                  className="h-11 font-mono tracking-wider"
-                />
-              </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="access-email" className="text-sm font-medium text-slate-700">
+                      E-mail usado no pagamento (Cakto)
+                    </Label>
+                    <Input
+                      id="access-email"
+                      type="email"
+                      inputMode="email"
+                      autoComplete="email"
+                      placeholder="voce@email.com"
+                      value={email}
+                      onChange={(e) => {
+                        setEmail(e.target.value)
+                        setError('')
+                      }}
+                      onKeyDown={(e) => e.key === 'Enter' && !checking && void handleActivate()}
+                      className="h-11"
+                    />
+                  </div>
 
-              {error && (
-                <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs leading-relaxed text-red-700">
-                  {error}
-                </p>
+                  {error && (
+                    <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs leading-relaxed text-red-700">
+                      {error}
+                    </p>
+                  )}
+
+                  <Button
+                    onClick={() => void handleActivate()}
+                    disabled={checking}
+                    className="h-12 w-full bg-slate-900 text-base font-bold text-white hover:bg-slate-800"
+                  >
+                    {checking ? (
+                      <>
+                        <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Verificando assinatura...
+                      </>
+                    ) : (
+                      <>
+                        <BadgeCheck className="mr-2 h-5 w-5" /> Verificar e ativar
+                      </>
+                    )}
+                  </Button>
+
+                  <p className="text-[11px] leading-relaxed text-slate-400">
+                    Use o mesmo e-mail informado no checkout da Cakto. Assinaturas ativas são confirmadas na hora —
+                    sem código. Dúvidas? {SITE.supportEmail}.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <div className="flex items-center gap-2">
+                    <KeyRound className="h-5 w-5 text-amber-500" />
+                    <h2 className="text-base font-bold text-slate-900">Tenho um código de acesso</h2>
+                    <Badge className="ml-auto gap-1 bg-amber-100 text-amber-800 hover:bg-amber-100">
+                      <BadgeCheck className="h-3 w-3" /> Assinantes
+                    </Badge>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label htmlFor="access-code" className="text-sm font-medium text-slate-700">
+                      Código de acesso
+                    </Label>
+                    <Input
+                      id="access-code"
+                      placeholder="SPP-XXXX-XXXX-XXXX"
+                      value={code}
+                      onChange={(e) => {
+                        setCode(e.target.value.toUpperCase())
+                        setError('')
+                      }}
+                      onKeyDown={(e) => e.key === 'Enter' && !checking && void handleActivate()}
+                      autoCapitalize="characters"
+                      autoCorrect="off"
+                      spellCheck={false}
+                      className="h-11 font-mono tracking-wider"
+                    />
+                  </div>
+
+                  {error && (
+                    <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs leading-relaxed text-red-700">
+                      {error}
+                    </p>
+                  )}
+
+                  <Button
+                    onClick={() => void handleActivate()}
+                    disabled={checking}
+                    className="h-12 w-full bg-slate-900 text-base font-bold text-white hover:bg-slate-800"
+                  >
+                    {checking ? (
+                      <>
+                        <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Verificando...
+                      </>
+                    ) : (
+                      <>
+                        <KeyRound className="mr-2 h-5 w-5" /> Ativar acesso
+                      </>
+                    )}
+                  </Button>
+
+                  <p className="text-[11px] leading-relaxed text-slate-400">
+                    Não achou seu código? Verifique o e-mail de confirmação da Cakto (inclusive a caixa de spam) ou
+                    fale com o suporte: {SITE.supportEmail}.
+                  </p>
+                </>
               )}
-
-              <Button
-                onClick={() => void handleActivate()}
-                disabled={checking}
-                className="h-12 w-full bg-slate-900 text-base font-bold text-white hover:bg-slate-800"
-              >
-                {checking ? (
-                  <>
-                    <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Verificando...
-                  </>
-                ) : (
-                  <>
-                    <KeyRound className="mr-2 h-5 w-5" /> Ativar acesso
-                  </>
-                )}
-              </Button>
-
-              <p className="text-[11px] leading-relaxed text-slate-400">
-                Não achou seu código? Verifique o e-mail de confirmação da Cakto (inclusive a caixa de spam) ou fale
-                com o suporte: {SITE.supportEmail}.
-              </p>
             </CardContent>
           </Card>
 
@@ -289,10 +418,9 @@ export function AccessScreen({ license, onBack, onActivated, onStartTrial, onSig
             </Card>
           )}
 
-          {serverConfigured === false && (
+          {serverCakto === false && (
             <p className="mt-4 text-center text-[11px] text-slate-400">
-              Modo demonstração: qualquer código no formato SPP-XXXX-XXXX-XXXX é aceito até que os códigos oficiais
-              sejam cadastrados no servidor.
+              Verificação automática por e-mail em manutenção neste momento — use a aba “Código de acesso”.
             </p>
           )}
 

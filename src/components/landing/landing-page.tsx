@@ -94,11 +94,11 @@ const FEATURES = [
 const FAQ = [
   {
     q: 'Como funciona a assinatura de R$ 17,90/mês?',
-    a: 'A cobrança recorrente é gerenciada 100% pela Cakto, plataforma segura de pagamentos. Você pode pagar com Pix, cartão de crédito ou boleto e cancelar quando quiser, direto no seu e-mail de compra — sem multa e sem burocracia.',
+    a: 'A cobrança recorrente é gerenciada 100% pela Cakto, plataforma segura de pagamentos. Você pode pagar com Pix, Pix Automático (débito automático) ou cartão de crédito e cancelar quando quiser, direto no seu e-mail de compra — sem multa e sem burocracia.',
   },
   {
     q: 'Como recebo meu acesso depois de pagar?',
-    a: 'Assim que o pagamento é confirmado, a Cakto envia um e-mail com o seu CÓDIGO DE ACESSO. Na tela inicial do app, toque em “Já sou assinante”, digite o código e pronto: acesso liberado em todos os estudos.',
+    a: 'É automático: na tela “Já sou assinante”, informe o MESMO e-mail que você usou no pagamento na Cakto. O app confirma sua assinatura ativa na hora e libera todo o conteúdo neste aparelho. Também é possível ativar com um código de acesso, se você tiver um.',
   },
   {
     q: 'Preciso instalar algum aplicativo?',
@@ -192,7 +192,7 @@ export function LandingPage({ onEnterAccess, onStartTrial }: LandingPageProps) {
                 </Button>
               </div>
               <p className="mt-3 text-xs text-slate-400">
-                Sem cartão para testar • Cancele quando quiser • Pix, cartão e boleto via Cakto
+                Sem cartão para testar • Cancele quando quiser • Pix, Pix Automático e cartão via Cakto
               </p>
             </motion.div>
 
@@ -346,8 +346,8 @@ export function LandingPage({ onEnterAccess, onStartTrial }: LandingPageProps) {
                   Prefiro testar {SITE.trialDays} dias grátis
                 </Button>
                 <p className="mt-3 text-center text-[11px] leading-relaxed text-slate-400">
-                  Pagamento processado pela Cakto (Pix, cartão ou boleto). O código de acesso chega no seu e-mail
-                  após a confirmação.
+                  Pagamento processado pela Cakto (Pix, Pix Automático ou cartão). Depois de pagar, ative com o
+                  e-mail da compra em “Já sou assinante” — liberação na hora.
                 </p>
               </CardContent>
             </Card>

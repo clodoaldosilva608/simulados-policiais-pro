@@ -2,14 +2,15 @@
  * Configuração central do produto.
  *
  * ASSINATURA (Cakto):
- * 1. Crie o produto "Assinatura Simulados Policiais Pro" em https://app.cakto.com.br
- *    com valor recorrente de R$ 17,90/mês.
- * 2. Copie o link de checkout e defina a variável de ambiente
- *    NEXT_PUBLIC_CAKTO_CHECKOUT_URL (Vercel → Settings → Environment Variables).
- * 3. Configure a "entrega do produto" na Cakto para enviar ao cliente um
- *    CÓDIGO DE ACESSO (ex.: SPP-XXXX-XXXX-XXXX).
- * 4. Cadastre os códigos válidos na variável de ambiente ACCESS_CODES
- *    (separados por vírgula) — eles são validados em /api/license.
+ * • Produto já criado via API pública da Cakto:
+ *   "Simulados Policiais Pro — Assinatura Mensal" (R$ 17,90/mês recorrente,
+ *   Pix + Pix Automático + Cartão) — oferta v5zisya / produto 75a063ec-c313-4377-9087-c580ac50a97f
+ * • Checkout: https://pay.cakto.com.br/v5zisya
+ * • Ativação no app: e-mail da compra validado em tempo real contra a API
+ *   da Cakto (assinaturas ativas) em /api/license — ou código SPP-… como alternativa.
+ * • Webhook (opcional/auditoria): aponte a Cakto para /api/webhook/cakto
+ *   e defina CAKTO_WEBHOOK_SECRET. Credenciais da Cakto ficam no servidor:
+ *   CAKTO_CLIENT_ID / CAKTO_CLIENT_SECRET / CAKTO_PRODUCT_ID.
  */
 export const SITE = {
   name: 'Simulados Policiais Pro',
@@ -19,8 +20,9 @@ export const SITE = {
   period: '/mês',
   /** Dias de teste grátis (sem cartão) */
   trialDays: 7,
-  /** Link de checkout da Cakto (define via env NEXT_PUBLIC_CAKTO_CHECKOUT_URL) */
-  checkoutUrl: (process.env.NEXT_PUBLIC_CAKTO_CHECKOUT_URL ?? '') as string,
+  /** Link de checkout da Cakto (env NEXT_PUBLIC_CAKTO_CHECKOUT_URL sobrepõe) */
+  checkoutUrl:
+    (process.env.NEXT_PUBLIC_CAKTO_CHECKOUT_URL ?? '') || 'https://pay.cakto.com.br/v5zisya',
   supportEmail: 'suporte@simuladospoliciais.pro',
 } as const
 
