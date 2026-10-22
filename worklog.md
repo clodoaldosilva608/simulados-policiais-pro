@@ -131,3 +131,20 @@ Stage Summary:
 - PAINEL ADMIN NO AR: https://simuladospoliciais.vercel.app/admin — login admin / SPP-Admin-2026!x9K7mQ2v (trocar senha recomendado)
 - Registro central 100% funcional: toda conta nova (teste grátis com e-mail opcional), toda ativação (e-mail Cakto ou código) e todo evento da Cakto aparece no painel automaticamente; assinantes recorrentes visíveis com MRR estimado
 - Pendências do dono: (1) TROCAR a senha do admin (enviar novo ADMIN_PASSWORD_HASH); (2) revogar/rotacionar tokens expostos no chat (GitHub, Vercel, Cakto); (3) verificar e-mail na Vercel para desbloquear deploys com metadado git
+
+---
+Task ID: 6
+Agent: main (Z.ai)
+Task: Usuário reportou ver landing + cadastro de usuário em vez do painel admin — diagnosticar, garantir acesso e melhorar descobribilidade
+
+Work Log:
+- Diagnóstico: /admin ESTÁ em produção e correto (curl: HTML do painel + /api/admin/login responde 401/403 JSON); o endereço raiz mostra landing + acesso do aluno POR DESIGN — o painel é página separada em /admin, sem link no app (o dono estava acessando a raiz, não /admin)
+- Evidência em navegador real (viewport 390x844, produção): /admin exibe login dedicado "Painel Administrativo" (e2e /tmp/e2e-admin-login-compact.png); login admin + senha → dashboard com KPIs "Contas criadas 1 · Em teste grátis 1 · Assinantes ativos 0 · Receita/mês" (e2e-admin-dash-compact.png)
+- MELHORIA: link discreto "Acesso administrativo" no rodapé da landing (text-slate-700, 11px, target _blank) → /admin; lint limpo, build OK (rota /admin presente)
+- Deploy produção via CLI (rsync /tmp/deploy-src sem .git + .vercel/project.json copiado) → READY dpl simuladospoliciais-q3onfhnj5…, alias simuladospoliciais.vercel.app; push GitHub 467458e
+- Pós-deploy validado: footer contém "Acesso administrativo -> /admin"; /admin segue servindo login dedicado
+
+Stage Summary:
+- Painel admin acessível e confirmado em produção: https://simuladospoliciais.vercel.app/admin (login admin / SPP-Admin-2026!x9K7mQ2v)
+- Caminho de descoberta garantido: rodapé da landing agora tem link "Acesso administrativo"
+- Dono deve: usar a URL exata /admin; trocar a senha; revogar tokens expostos no chat
