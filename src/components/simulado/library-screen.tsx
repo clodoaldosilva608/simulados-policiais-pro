@@ -7,10 +7,16 @@ import {
   BadgeCheck,
   BookOpen,
   CheckCircle2,
+  ChevronRight,
+  Crown,
+  FilePlus2,
   FileText,
   GraduationCap,
   Landmark,
+  LifeBuoy,
   Loader2,
+  LogOut,
+  Menu,
   PenTool,
   Play,
   Plus,
@@ -20,6 +26,7 @@ import {
   Target,
   Trash2,
   Upload,
+  UserRound,
   CheckCheck,
   ListOrdered,
   XCircle,
@@ -38,6 +45,15 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from '@/components/ui/sheet'
+import { SITE } from '@/config/site'
 import {
   OFFICIAL_PACKS,
   STATIC_PACK,
@@ -82,6 +98,8 @@ interface LibraryScreenProps {
   stats?: DashboardStats | null
   /** Abre a tela de acesso/gerenciar assinatura */
   onManageAccess: () => void
+  /** Encerra a sessão nesta conta/aparelho (menu hambúrguer) */
+  onSignOut: () => void
 }
 
 function formatBytes(bytes: number): string {
@@ -134,6 +152,46 @@ function StatCard({
         <p className="truncate text-[11px] font-medium uppercase tracking-wide text-slate-500">{label}</p>
       </div>
     </div>
+  )
+}
+
+/** Item do menu hambúrguer (ação ou link, ex. suporte por e-mail) */
+function MenuItem({
+  icon: Icon,
+  label,
+  hint,
+  onClick,
+  href,
+}: {
+  icon: typeof UserRound
+  label: string
+  hint?: string
+  onClick: () => void
+  /** Quando definido, renderiza <a> em vez de botão */
+  href?: string
+}) {
+  const inner = (
+    <>
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-600">
+        <Icon className="h-5 w-5" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-bold text-slate-800">{label}</p>
+        {hint && <p className="truncate text-xs text-slate-500">{hint}</p>}
+      </div>
+      <ChevronRight className="h-4 w-4 shrink-0 text-slate-400" />
+    </>
+  )
+  const cls =
+    'flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors hover:bg-slate-100'
+  return href ? (
+    <a href={href} onClick={onClick} className={cls}>
+      {inner}
+    </a>
+  ) : (
+    <button type="button" onClick={onClick} className={cls}>
+      {inner}
+    </button>
   )
 }
 
@@ -242,7 +300,9 @@ export function LibraryScreen({
   accountName,
   stats,
   onManageAccess,
+  onSignOut,
 }: LibraryScreenProps) {
+  const [menuOpen, setMenuOpen] = useState(false)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [resumeDocId, setResumeDocId] = useState<string | null>(null)
   const [initialFile, setInitialFile] = useState<File | null>(null)
@@ -302,12 +362,155 @@ export function LibraryScreen({
             <ShieldCheck className="h-6 w-6" />
           </div>
           <div className="min-w-0">
-            <p className="text-base font-bold leading-tight">Simulados Policiais Pro</p>
+            <p className="truncate text-base font-bold leading-tight">Simulados Policiais Pro</p>
             <p className="hidden text-xs leading-tight text-slate-400 sm:block">
               Provas oficiais (PF, PC, PM, PRF, Polícia Penal) + transforme qualquer PDF em simulado
             </p>
           </div>
           <div className="ml-auto flex shrink-0 items-center gap-2">
+            {/* Menu hambúrguer — todas as opções da conta */}
+            <Sheet open={menuOpen} onOpenChange={setMenuOpen}>
+              <SheetTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label="Abrir menu"
+                  title="Menu"
+                  className="h-10 w-10 shrink-0 text-slate-200 hover:bg-slate-800 hover:text-white"
+                >
+                  <Menu className="h-6 w-6" />
+                </Button>
+              </SheetTrigger>
+              <SheetContent
+                side="right"
+                className="flex w-[304px] flex-col gap-0 p-0 sm:w-[360px] [&>button]:text-slate-400 [&>button]:hover:text-white"
+              >
+                <SheetHeader className="gap-0 space-y-0 rounded-none border-b border-slate-800 bg-slate-900 p-5 pb-6 text-white">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-amber-400 text-base font-bold text-slate-950">
+                      {avatarInitial}
+                    </div>
+                    <div className="min-w-0">
+                      <SheetTitle className="truncate text-base font-bold text-white">
+                        Olá, {accountName || 'Aluno'}
+                      </SheetTitle>
+                      <SheetDescription className="truncate text-xs text-slate-400">
+                        {accountEmail || 'Conta do aluno'}
+                      </SheetDescription>
+                    </div>
+                  </div>
+                  <p
+                    className={`mt-3 inline-flex w-fit items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold ${
+                      licenseBadge.active
+                        ? 'bg-emerald-500/15 text-emerald-300'
+                        : 'bg-amber-400/15 text-amber-300'
+                    }`}
+                  >
+                    {licenseBadge.active ? (
+                      <>
+                        <BadgeCheck className="h-3.5 w-3.5" /> Assinatura ativa
+                      </>
+                    ) : licenseBadge.trialDaysLeft !== null ? (
+                      <>
+                        <Sparkles className="h-3.5 w-3.5" /> Teste grátis • {licenseBadge.trialDaysLeft}d restantes
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="h-3.5 w-3.5" /> Teste grátis
+                      </>
+                    )}
+                  </p>
+                </SheetHeader>
+
+                <nav aria-label="Opções do menu" className="flex-1 space-y-1 overflow-y-auto p-3">
+                  {/* Assinar o plano (ou status de assinante) */}
+                  {licenseBadge.active ? (
+                    <div className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3.5 py-3">
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-600 text-white">
+                        <Crown className="h-5 w-5" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-bold text-emerald-900">Assinatura ativa</p>
+                        <p className="truncate text-xs text-emerald-700">Todas as provas liberadas</p>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMenuOpen(false)
+                        window.open(SITE.checkoutUrl, '_blank', 'noopener,noreferrer')
+                      }}
+                      className="flex w-full items-center gap-3 rounded-xl bg-amber-400 px-3.5 py-3 text-left transition-colors hover:bg-amber-300"
+                    >
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-900 text-amber-300">
+                        <Crown className="h-5 w-5" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-bold text-slate-950">Assinar o plano</p>
+                        <p className="truncate text-xs text-slate-700">
+                          {SITE.price}{SITE.period} • Cakto
+                        </p>
+                      </div>
+                      <ChevronRight className="h-4 w-4 shrink-0 text-slate-700" />
+                    </button>
+                  )}
+
+                  <MenuItem
+                    icon={UserRound}
+                    label="Minha conta"
+                    hint="Status, ativação e aparelho"
+                    onClick={() => {
+                      setMenuOpen(false)
+                      onManageAccess()
+                    }}
+                  />
+                  <MenuItem
+                    icon={FilePlus2}
+                    label="Novo simulado"
+                    hint="Transforme um PDF em prova"
+                    onClick={() => {
+                      setMenuOpen(false)
+                      openNewUpload()
+                    }}
+                  />
+                  <MenuItem
+                    icon={Target}
+                    label="Meu desempenho"
+                    hint="Acertos, erros e disciplinas"
+                    onClick={() => {
+                      setMenuOpen(false)
+                      requestAnimationFrame(() =>
+                        document.getElementById('painel-desempenho')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                      )
+                    }}
+                  />
+                  <MenuItem
+                    icon={LifeBuoy}
+                    label="Suporte"
+                    hint={SITE.supportEmail}
+                    href={`mailto:${SITE.supportEmail}`}
+                    onClick={() => setMenuOpen(false)}
+                  />
+                </nav>
+
+                <div className="border-t border-slate-200 p-4">
+                  <Button
+                    onClick={() => {
+                      setMenuOpen(false)
+                      onSignOut()
+                    }}
+                    variant="outline"
+                    className="h-11 w-full border-slate-300 font-bold text-slate-700 hover:bg-slate-100"
+                  >
+                    <LogOut className="mr-2 h-4 w-4" /> Sair deste aparelho
+                  </Button>
+                  <p className="mt-2.5 text-center text-[11px] leading-relaxed text-slate-400">
+                    {SITE.name} • {SITE.price}{SITE.period}
+                  </p>
+                </div>
+              </SheetContent>
+            </Sheet>
             <button
               type="button"
               onClick={onManageAccess}
@@ -352,7 +555,7 @@ export function LibraryScreen({
       <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6">
         {/* Painel do aluno — saudação + métricas de acertos/erros */}
         {accountName && (
-          <section aria-label="Meu desempenho" className="mb-6">
+          <section id="painel-desempenho" aria-label="Meu desempenho" className="mb-6 scroll-mt-20">
             <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
               <div className="flex items-center gap-3">
                 <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-slate-900 text-base font-bold text-amber-300">

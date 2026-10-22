@@ -546,6 +546,7 @@ export default function Home() {
         accountName={displayNameOf(session.user)}
         stats={stats}
         onManageAccess={() => setPhase('access')}
+        onSignOut={() => void session.logout()}
       />
     )
   }
