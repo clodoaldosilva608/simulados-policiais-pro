@@ -522,7 +522,7 @@ export function LibraryScreen({
                 accountName || accountEmail
                   ? `Conta: ${[accountName, accountEmail].filter(Boolean).join(' • ')}`
                   : 'Gerenciar conta'}
-              className={`shrink-0 whitespace-nowrap rounded-full px-2.5 py-1.5 text-[11px] font-bold transition-colors sm:px-3 ${
+              className={`hidden shrink-0 whitespace-nowrap rounded-full px-2.5 py-1.5 text-[11px] font-bold transition-colors sm:block sm:px-3 ${
                 licenseBadge.active
                   ? 'bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25'
                   : 'bg-amber-400/15 text-amber-300 hover:bg-amber-400/25'
