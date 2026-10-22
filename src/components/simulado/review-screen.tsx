@@ -15,7 +15,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { HtmlContent } from './html-content'
 import { TextBlockCard } from './text-block-card'
-import { getPackSubject, type OptionKey, type SimuladoPack } from '@/data/simulado'
+import { getPackSubject, answerLabel, isCertErrado, type OptionKey, type SimuladoPack } from '@/data/simulado'
 
 type FilterKey = 'todas' | 'acertos' | 'erros' | 'branco' | 'sinalizadas'
 
@@ -166,6 +166,7 @@ export function ReviewScreen({ pack, answers, marked, onBack }: ReviewScreenProp
                     {q.options.map((opt) => {
                       const isGabarito = opt.key === q.answer
                       const isSelected = userAnswer === opt.key
+                      const isCEOpt = isCertErrado(q)
                       let cls = 'border-slate-200 bg-white'
                       let badgeCls = 'border border-slate-300 bg-white text-slate-600'
                       if (isGabarito) {
@@ -183,7 +184,7 @@ export function ReviewScreen({ pack, answers, marked, onBack }: ReviewScreenProp
                           <span
                             className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-sm font-bold uppercase ${badgeCls}`}
                           >
-                            {opt.key}
+                            {isCEOpt ? (opt.html === 'Certo' ? 'C' : 'E') : opt.key}
                           </span>
                           <HtmlContent html={opt.html} className="pt-0.5" />
                           <span className="ml-auto shrink-0">
@@ -197,7 +198,8 @@ export function ReviewScreen({ pack, answers, marked, onBack }: ReviewScreenProp
 
                   {userAnswer && userAnswer !== q.answer && (
                     <p className="mt-3 text-xs text-red-600">
-                      Sua resposta: alternativa “{userAnswer}” • Gabarito: alternativa “{q.answer}”.
+                      Sua resposta: {userAnswer === 'a' && isCertErrado(q) ? 'CERTO' : userAnswer === 'b' && isCertErrado(q) ? 'ERRADO' : `alternativa “${userAnswer}”`} •
+                      {' '}Gabarito: {answerLabel(q)}.
                     </p>
                   )}
 

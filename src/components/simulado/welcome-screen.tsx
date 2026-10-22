@@ -6,6 +6,7 @@ import {
   ArrowLeft,
   BookOpen,
   CheckCircle2,
+  CheckCheck,
   Clock,
   Eraser,
   FileText,
@@ -31,7 +32,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
-import { formatDurationLabel, type ExamMode, type SimuladoPack } from '@/data/simulado'
+import { formatDurationLabel, packFormatLabel, type ExamMode, type SimuladoPack } from '@/data/simulado'
 
 export interface AttemptInfo {
   name: string
@@ -76,9 +77,10 @@ export function WelcomeScreen({
   const total = pack.questions.length
   const multiChoice = total > 0 && pack.questions[0].options.length > 2
   const durLabel = formatDurationLabel(pack.durationMinutes)
+  const formatLabel = packFormatLabel(pack)
 
   const INSTRUCTIONS = [
-    `${total} questões ${multiChoice ? 'objetivas com 5 alternativas (a–e)' : 'no estilo Certo/Errado'}, geradas a partir do conteúdo do material.`,
+    `${total} questões ${multiChoice ? 'objetivas com 5 alternativas (A–E), uma correta' : 'no modelo Certo/Errado (C/E), como na prova da banca'}.`,
     `Duração: ${durLabel} no modo prova — cronômetro regressivo, como na prova real.`,
     'Ao final, você recebe a nota geral, o desempenho por assunto e o gabarito comentado de cada questão.',
     'Seu progresso é salvo automaticamente neste navegador — você pode retomar quando quiser.',
@@ -116,6 +118,9 @@ export function WelcomeScreen({
               <div className="mt-6 flex flex-wrap gap-2 text-xs font-medium">
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1.5">
                   <FileText className="h-3.5 w-3.5 text-amber-300" /> {total} questões
+                </span>
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1.5">
+                  <CheckCheck className="h-3.5 w-3.5 text-amber-300" /> Modelo: {formatLabel}
                 </span>
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1.5">
                   <Clock className="h-3.5 w-3.5 text-amber-300" /> {durLabel} de prova

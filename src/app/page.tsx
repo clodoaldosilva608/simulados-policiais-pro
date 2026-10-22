@@ -1,20 +1,23 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { Loader2, GraduationCap } from 'lucide-react'
+import { Loader2, GraduationCap, ShieldCheck } from 'lucide-react'
 import { LibraryScreen, type SavedInfo } from '@/components/simulado/library-screen'
 import { WelcomeScreen, type AttemptInfo } from '@/components/simulado/welcome-screen'
 import { ExamScreen } from '@/components/simulado/exam-screen'
 import { ResultsScreen } from '@/components/simulado/results-screen'
 import { ReviewScreen } from '@/components/simulado/review-screen'
 import {
-  STATIC_PACK,
+  STATIC_PACKS,
+  getStaticPack,
   type DocumentSummary,
   type ExamMode,
   type ExamState,
   type OptionKey,
   type SimuladoPack,
 } from '@/data/simulado'
+
+const STATIC_IDS = new Set(STATIC_PACKS.map((p) => p.id))
 
 type Phase = 'library' | 'welcome' | 'exam' | 'results' | 'review'
 
@@ -125,8 +128,10 @@ export default function Home() {
 
   const refreshSavedInfo = useCallback((list: DocumentSummary[]) => {
     const info: Record<string, SavedInfo> = {}
-    const staticMeta = peekSavedMeta(STATIC_PACK.id)
-    if (staticMeta) info[STATIC_PACK.id] = staticMeta
+    for (const p of STATIC_PACKS) {
+      const meta = peekSavedMeta(p.id)
+      if (meta) info[p.id] = meta
+    }
     for (const d of list) {
       const meta = peekSavedMeta(d.id)
       if (meta) info[d.id] = meta
@@ -169,10 +174,11 @@ export default function Home() {
   }, [loadDocs])
 
   const openDoc = useCallback(async (docId: string) => {
-    if (docId === STATIC_PACK.id) {
-      setPack(STATIC_PACK)
+    const staticPack = getStaticPack(docId)
+    if (staticPack) {
+      setPack(staticPack)
       setAttempts([])
-      const saved = loadSaved(docId, STATIC_PACK.questions.length - 1)
+      const saved = loadSaved(docId, staticPack.questions.length - 1)
       setSavedMeta(saved ? { finished: saved.finished, mode: saved.mode, name: saved.name } : null)
       setPhase('welcome')
       return
@@ -259,7 +265,7 @@ export default function Home() {
       if (!s || s.finished) return s
       const finished = { ...s, finished: true, finishedAt: Date.now() }
       // Registra a tentativa no servidor (apenas simulados de PDF)
-      if (pack && pack.id !== STATIC_PACK.id) {
+      if (pack && !STATIC_IDS.has(pack.id)) {
         const total = pack.questions.length
         const correct = pack.questions.filter((q) => finished.answers[q.id] === q.answer).length
         void fetch(`/api/documents/${pack.id}/attempts`, {
@@ -301,7 +307,7 @@ export default function Home() {
   if (!hydrated) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-slate-50 text-slate-400">
-        <GraduationCap className="h-10 w-10 animate-pulse text-amber-500" />
+        <ShieldCheck className="h-10 w-10 animate-pulse text-amber-500" />
         <p className="text-sm">Carregando simulados...</p>
       </div>
     )

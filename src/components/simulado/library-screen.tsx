@@ -1,14 +1,17 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
 import {
   AlertTriangle,
+  BadgeCheck,
   BookOpen,
   CheckCircle2,
   FileText,
   GraduationCap,
+  Landmark,
   Loader2,
+  PenTool,
   Play,
   Plus,
   RotateCcw,
@@ -16,6 +19,8 @@ import {
   Sparkles,
   Trash2,
   Upload,
+  CheckCheck,
+  ListOrdered,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -31,12 +36,21 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { STATIC_PACK, formatDurationLabel, type DocumentSummary } from '@/data/simulado'
+import {
+  OFFICIAL_PACKS,
+  STATIC_PACK,
+  formatDurationLabel,
+  packFormatLabel,
+  type DocumentSummary,
+  type SimuladoPack,
+} from '@/data/simulado'
 import { UploadDialog } from './upload-dialog'
 
 export interface SavedInfo {
   finished: boolean
 }
+
+type FormatFilter = 'todos' | 'certo_errado' | 'multipla_escolha'
 
 interface LibraryScreenProps {
   docs: DocumentSummary[]
@@ -53,12 +67,123 @@ function formatBytes(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`
 }
 
+/** Cores por carreira policial */
+const CARREIRA_STYLES: Record<string, string> = {
+  PF: 'bg-slate-900 text-amber-300',
+  PC: 'bg-amber-600 text-white',
+  PM: 'bg-emerald-700 text-white',
+  PRF: 'bg-orange-600 text-white',
+  'Polícia Penal': 'bg-purple-800 text-white',
+}
+
+const CARREIRA_ICONS: Record<string, typeof ShieldCheck> = {
+  PF: Landmark,
+  PC: ShieldCheck,
+  PM: ShieldCheck,
+  PRF: ShieldCheck,
+  'Polícia Penal': BadgeCheck,
+}
+
+function OfficialPackCard({
+  pack,
+  saved,
+  onOpen,
+  index,
+}: {
+  pack: SimuladoPack
+  saved?: SavedInfo
+  onOpen: (id: string) => void
+  index: number
+}) {
+  const Icon = CARREIRA_ICONS[pack.carreira ?? ''] ?? ShieldCheck
+  const subjectsCount = pack.subjects.length
+  const formatLabel = packFormatLabel(pack)
+  const isCE = formatLabel === 'Certo/Errado'
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: Math.min(index * 0.05, 0.25) }}
+    >
+      <Card className="flex h-full flex-col border-slate-200 transition-shadow hover:shadow-lg">
+        <CardContent className="flex flex-1 flex-col gap-3 p-5">
+          <div className="flex items-start gap-3">
+            <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl ${CARREIRA_STYLES[pack.carreira ?? ''] ?? 'bg-slate-900 text-amber-300'}`}>
+              <Icon className="h-6 w-6" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 className="text-base font-bold leading-tight text-slate-900">{pack.title}</h3>
+                {pack.oficial ? (
+                  <Badge className="gap-1 bg-emerald-100 text-emerald-800 hover:bg-emerald-100">
+                    <BadgeCheck className="h-3 w-3" /> Prova oficial
+                  </Badge>
+                ) : (
+                  <Badge className="gap-1 bg-amber-100 text-amber-800 hover:bg-amber-100">
+                    <PenTool className="h-3 w-3" /> Inédito no estilo da banca
+                  </Badge>
+                )}
+              </div>
+              <p className="mt-0.5 text-sm text-slate-500">{pack.subtitle}</p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge
+              variant="secondary"
+              className={
+                isCE
+                  ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-100'
+                  : 'bg-slate-100 text-slate-800 hover:bg-slate-100'
+              }
+            >
+              {isCE ? <CheckCheck className="mr-1 h-3.5 w-3.5" /> : <ListOrdered className="mr-1 h-3.5 w-3.5" />}
+              {formatLabel}
+            </Badge>
+            <Badge variant="secondary" className="bg-slate-100 text-slate-700 hover:bg-slate-100">
+              {pack.ano} • {pack.banca}
+            </Badge>
+            <Badge variant="secondary" className="bg-slate-100 text-slate-700 hover:bg-slate-100">
+              {pack.questions.length} questões
+            </Badge>
+            <Badge variant="secondary" className="bg-slate-100 text-slate-700 hover:bg-slate-100">
+              {subjectsCount} disciplinas
+            </Badge>
+            <Badge variant="secondary" className="bg-slate-100 text-slate-700 hover:bg-slate-100">
+              {formatDurationLabel(pack.durationMinutes)}
+            </Badge>
+          </div>
+
+          <div className="mt-auto flex gap-2 pt-1">
+            {saved && !saved.finished && (
+              <Button onClick={() => onOpen(pack.id)} className="flex-1 bg-emerald-600 font-bold text-white hover:bg-emerald-700">
+                <Play className="mr-1.5 h-4 w-4" /> Continuar
+              </Button>
+            )}
+            <Button
+              onClick={() => onOpen(pack.id)}
+              className={`${saved && !saved.finished ? '' : 'flex-1'} bg-slate-900 font-bold text-white hover:bg-slate-800`}
+            >
+              {saved ? 'Abrir' : (
+                <>
+                  <Play className="mr-1.5 h-4 w-4" /> Iniciar
+                </>
+              )}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    </motion.div>
+  )
+}
+
 export function LibraryScreen({ docs, loading, savedInfo, onOpen, onDelete, onUploadCompleted }: LibraryScreenProps) {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [resumeDoc, setResumeDoc] = useState<DocumentSummary | null>(null)
   const [initialFile, setInitialFile] = useState<File | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<DocumentSummary | null>(null)
   const [dragOver, setDragOver] = useState(false)
+  const [formatFilter, setFormatFilter] = useState<FormatFilter>('todos')
   const dropCount = useRef(0)
 
   const openNewUpload = () => {
@@ -87,9 +212,19 @@ export function LibraryScreen({ docs, loading, savedInfo, onOpen, onDelete, onUp
     }
   }
 
-  const staticSaved = savedInfo[STATIC_PACK.id]
+  const officialPacks = useMemo(() => {
+    if (formatFilter === 'todos') return OFFICIAL_PACKS
+    return OFFICIAL_PACKS.filter((p) => p.questionFormat === formatFilter)
+  }, [formatFilter])
+
   const readyDocs = docs.filter((d) => d.status === 'ready')
   const otherDocs = docs.filter((d) => d.status !== 'ready')
+
+  const FILTERS: { id: FormatFilter; label: string }[] = [
+    { id: 'todos', label: 'Todos os modelos' },
+    { id: 'certo_errado', label: 'Certo/Errado (C/E)' },
+    { id: 'multipla_escolha', label: 'A, B, C, D, E' },
+  ]
 
   return (
     <div className="flex min-h-screen flex-col bg-slate-50">
@@ -97,12 +232,12 @@ export function LibraryScreen({ docs, loading, savedInfo, onOpen, onDelete, onUp
       <header className="sticky top-0 z-40 border-b border-slate-800 bg-slate-900 text-white shadow-lg">
         <div className="mx-auto flex max-w-6xl items-center gap-3 px-4 py-3.5">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-400 text-slate-950">
-            <GraduationCap className="h-6 w-6" />
+            <ShieldCheck className="h-6 w-6" />
           </div>
           <div>
-            <p className="text-base font-bold leading-tight">Simulados Interativos</p>
+            <p className="text-base font-bold leading-tight">Simulados Policiais Pro</p>
             <p className="text-xs leading-tight text-slate-400">
-              Transforme qualquer PDF em um simulado de estudos
+              Provas oficiais (PF, PC, PM, PRF, Polícia Penal) + transforme qualquer PDF em simulado
             </p>
           </div>
           <Button
@@ -115,69 +250,67 @@ export function LibraryScreen({ docs, loading, savedInfo, onOpen, onDelete, onUp
       </header>
 
       <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6">
-        {/* Hero com upload */}
-        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35 }}>
-          <div
-            role="button"
-            tabIndex={0}
-            aria-label="Enviar PDF para criar simulado"
-            onClick={openNewUpload}
-            onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && openNewUpload()}
-            onDragEnter={(e) => {
-              e.preventDefault()
-              dropCount.current++
-              setDragOver(true)
-            }}
-            onDragLeave={(e) => {
-              e.preventDefault()
-              dropCount.current--
-              if (dropCount.current <= 0) setDragOver(false)
-            }}
-            onDragOver={(e) => e.preventDefault()}
-            onDrop={handleDrop}
-            className={`cursor-pointer rounded-2xl border-2 border-dashed bg-white px-6 py-8 text-center shadow-sm transition-all sm:py-10 ${
-              dragOver ? 'border-amber-500 bg-amber-50/60 ring-4 ring-amber-400/20' : 'border-slate-300 hover:border-amber-400'
-            }`}
-          >
-            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-900">
-              <Upload className="h-7 w-7 text-amber-300" />
-            </div>
-            <h2 className="mt-4 text-lg font-bold text-slate-900 sm:text-xl">
-              Arraste um PDF aqui ou clique para enviar
+        {/* Provas oficiais — Área Policial */}
+        <section>
+          <div className="flex flex-wrap items-center gap-3">
+            <h2 className="text-sm font-bold uppercase tracking-wide text-slate-500">
+              Provas oficiais — Área Policial
             </h2>
-            <p className="mx-auto mt-2 max-w-xl text-sm leading-relaxed text-slate-500">
-              Editais, apostilas, resumos, legislação... a IA lê o conteúdo e cria um simulado inédito com
-              gabarito comentado, cronômetro e desempenho por assunto.
-            </p>
-            <div className="mt-4 flex flex-wrap justify-center gap-2 text-xs font-medium text-slate-500">
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1.5">
-                <FileText className="h-3.5 w-3.5 text-slate-400" /> PDFs de até 25 MB
-              </span>
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1.5">
-                <Sparkles className="h-3.5 w-3.5 text-amber-500" /> Questões inéditas por IA
-              </span>
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1.5">
-                <BookOpen className="h-3.5 w-3.5 text-emerald-500" /> Gabarito comentado
-              </span>
-            </div>
+            <Badge className="bg-slate-900 text-amber-300 hover:bg-slate-900">
+              <BadgeCheck className="mr-1 h-3 w-3" /> Gabarito oficial
+            </Badge>
           </div>
-        </motion.div>
+          <p className="mt-1 text-xs leading-relaxed text-slate-500">
+            Questões reais de concursos recentes da área policial, com o gabarito oficial de cada banca. Escolha o
+            modelo de resposta que você prefere treinar: <b className="text-emerald-700">Certo/Errado</b> ou{' '}
+            <b className="text-slate-800">A, B, C, D, E</b>.
+          </p>
 
-        {/* Simulado embutido */}
-        <section className="mt-8">
-          <h2 className="mb-3 text-sm font-bold uppercase tracking-wide text-slate-500">
-            Simulado oficial do aplicativo
-          </h2>
-          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}>
+          {/* Filtro de modelo */}
+          <div className="mt-4 flex flex-wrap gap-2" role="group" aria-label="Filtrar por modelo de questão">
+            {FILTERS.map((f) => (
+              <button
+                key={f.id}
+                type="button"
+                onClick={() => setFormatFilter(f.id)}
+                aria-pressed={formatFilter === f.id}
+                className={`rounded-full border px-4 py-2 text-xs font-bold transition-all ${
+                  formatFilter === f.id
+                    ? 'border-slate-900 bg-slate-900 text-amber-300 shadow-md'
+                    : 'border-slate-300 bg-white text-slate-600 hover:border-slate-400'
+                }`}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+
+          <div className="mt-4 grid gap-4 sm:grid-cols-2">
+            {officialPacks.map((pack, i) => (
+              <OfficialPackCard
+                key={pack.id}
+                pack={pack}
+                saved={savedInfo[pack.id]}
+                onOpen={onOpen}
+                index={i}
+              />
+            ))}
+          </div>
+
+          {/* Simulado inédito do app (PC-PE) */}
+          <div className="mt-4">
             <Card className="border-slate-900/20 shadow-md transition-shadow hover:shadow-lg">
               <CardContent className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center">
                 <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-slate-900">
-                  <ShieldCheck className="h-7 w-7 text-amber-300" />
+                  <GraduationCap className="h-7 w-7 text-amber-300" />
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <h3 className="text-base font-bold text-slate-900">{STATIC_PACK.title}</h3>
-                    <Badge className="bg-slate-900 text-amber-300 hover:bg-slate-900">Embutido</Badge>
+                    <Badge className="bg-slate-900 text-amber-300 hover:bg-slate-900">Inédito do app</Badge>
+                    <Badge variant="secondary" className="bg-slate-100 text-slate-700 hover:bg-slate-100">
+                      A, B, C, D, E
+                    </Badge>
                   </div>
                   <p className="mt-0.5 text-sm text-slate-500">{STATIC_PACK.subtitle}</p>
                   <p className="mt-1 text-xs text-slate-400">
@@ -186,7 +319,7 @@ export function LibraryScreen({ docs, loading, savedInfo, onOpen, onDelete, onUp
                   </p>
                 </div>
                 <div className="flex shrink-0 gap-2">
-                  {staticSaved && !staticSaved.finished && (
+                  {savedInfo[STATIC_PACK.id] && !savedInfo[STATIC_PACK.id].finished && (
                     <Button onClick={() => onOpen(STATIC_PACK.id)} className="bg-emerald-600 font-bold text-white hover:bg-emerald-700">
                       <Play className="mr-1.5 h-4 w-4" /> Continuar
                     </Button>
@@ -195,7 +328,7 @@ export function LibraryScreen({ docs, loading, savedInfo, onOpen, onDelete, onUp
                     onClick={() => onOpen(STATIC_PACK.id)}
                     className="bg-slate-900 font-bold text-white hover:bg-slate-800"
                   >
-                    {staticSaved ? 'Abrir' : (
+                    {savedInfo[STATIC_PACK.id] ? 'Abrir' : (
                       <>
                         <Play className="mr-1.5 h-4 w-4" /> Iniciar
                       </>
@@ -204,6 +337,59 @@ export function LibraryScreen({ docs, loading, savedInfo, onOpen, onDelete, onUp
                 </div>
               </CardContent>
             </Card>
+          </div>
+        </section>
+
+        {/* Hero com upload */}
+        <section className="mt-10">
+          <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35 }}>
+            <div
+              role="button"
+              tabIndex={0}
+              aria-label="Enviar PDF para criar simulado"
+              onClick={openNewUpload}
+              onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && openNewUpload()}
+              onDragEnter={(e) => {
+                e.preventDefault()
+                dropCount.current++
+                setDragOver(true)
+              }}
+              onDragLeave={(e) => {
+                e.preventDefault()
+                dropCount.current--
+                if (dropCount.current <= 0) setDragOver(false)
+              }}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={handleDrop}
+              className={`cursor-pointer rounded-2xl border-2 border-dashed bg-white px-6 py-8 text-center shadow-sm transition-all sm:py-10 ${
+                dragOver ? 'border-amber-500 bg-amber-50/60 ring-4 ring-amber-400/20' : 'border-slate-300 hover:border-amber-400'
+              }`}
+            >
+              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-900">
+                <Upload className="h-7 w-7 text-amber-300" />
+              </div>
+              <h2 className="mt-4 text-lg font-bold text-slate-900 sm:text-xl">
+                Transforme qualquer PDF em simulado interativo
+              </h2>
+              <p className="mx-auto mt-2 max-w-xl text-sm leading-relaxed text-slate-500">
+                Editais, apostilas, resumos, legislação, provas anteriores... a IA lê o conteúdo e cria um simulado
+                inédito — escolhendo o modelo <b>Certo/Errado</b> ou <b>A, B, C, D, E</b>.
+              </p>
+              <div className="mt-4 flex flex-wrap justify-center gap-2 text-xs font-medium text-slate-500">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1.5">
+                  <FileText className="h-3.5 w-3.5 text-slate-400" /> PDFs de até 25 MB
+                </span>
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1.5">
+                  <Sparkles className="h-3.5 w-3.5 text-amber-500" /> Questões inéditas por IA
+                </span>
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1.5">
+                  <CheckCheck className="h-3.5 w-3.5 text-emerald-500" /> Certo/Errado ou A–E
+                </span>
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1.5">
+                  <BookOpen className="h-3.5 w-3.5 text-emerald-500" /> Gabarito comentado
+                </span>
+              </div>
+            </div>
           </motion.div>
         </section>
 
@@ -371,8 +557,8 @@ export function LibraryScreen({ docs, loading, savedInfo, onOpen, onDelete, onUp
 
       <footer className="mt-auto border-t border-slate-200 bg-white py-4">
         <p className="text-center text-xs text-slate-400">
-          Simulados Interativos • estude com qualquer material em PDF — questões geradas por inteligência
-          artificial. Sempre confira o gabarito com a fonte oficial.
+          Simulados Policiais Pro • provas oficiais com gabarito + qualquer PDF transformado em simulado por IA.
+          Sempre confira o gabarito com a fonte oficial.
         </p>
       </footer>
 

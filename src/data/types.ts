@@ -15,6 +15,9 @@ export interface Question {
   comment: string
 }
 
+/** Formato de resposta do simulado */
+export type QuestionFormat = 'certo_errado' | 'multipla_escolha'
+
 export interface TextBlock {
   id: string
   title: string
@@ -58,8 +61,8 @@ export interface ExamResult {
 }
 
 /**
- * Pacote completo de um simulado — pode ser o estático (embutido no app)
- * ou gerado dinamicamente a partir de um PDF enviado pelo usuário.
+ * Pacote completo de um simulado — pode ser o estático (embutido no app),
+ * uma prova oficial da área policial ou gerado dinamicamente a partir de um PDF.
  */
 export interface SimuladoPack {
   /** Identificador: 'pcpe-agente' para o embutido ou o id do Document no banco */
@@ -73,6 +76,18 @@ export interface SimuladoPack {
   subjects: Subject[]
   textBlocks: Record<string, TextBlock>
   questions: Question[]
+  /** Formato predominante das questões (deriva do nº de opções quando ausente) */
+  questionFormat?: QuestionFormat
+  /** Carreira policial (PF, PC, PM, PRF, Polícia Penal...) */
+  carreira?: string
+  /** Banca organizadora */
+  banca?: string
+  /** Ano de aplicação */
+  ano?: number
+  /** true quando as questões são de prova oficial real */
+  oficial?: boolean
+  /** true quando as questões são inéditas no estilo da banca (não oficiais) */
+  ineditas?: boolean
 }
 
 /** Resumo de um documento da biblioteca (listagem) */

@@ -2,8 +2,10 @@ import type { ExamResult, OptionKey, Question, SimuladoPack, Subject, TextBlock 
 import { PART1 } from './questions-part1'
 import { PART2 } from './questions-part2'
 import { PART3 } from './questions-part3'
+import { OFFICIAL_PACKS } from './official'
 
 export * from './types'
+export { OFFICIAL_PACKS } from './official'
 
 export const EXAM_META = {
   title: 'Simulado PC PE – Agente',
@@ -132,6 +134,35 @@ export function formatDuration(ms: number): string {
   const s = totalSeconds % 60
   const pad = (v: number) => String(v).padStart(2, '0')
   return `${pad(h)}:${pad(m)}:${pad(s)}`
+}
+
+/** Todos os simulados estáticos embutidos no app (PC-PE + provas oficiais policiais) */
+export const STATIC_PACKS: SimuladoPack[] = [STATIC_PACK, ...OFFICIAL_PACKS]
+
+/** Busca um pack estático pelo id */
+export function getStaticPack(docId: string): SimuladoPack | undefined {
+  return STATIC_PACKS.find((p) => p.id === docId)
+}
+
+/** Detecta se a questão é do formato Certo/Errado (2 opções Certo/Errado) */
+export function isCertErrado(q: Question): boolean {
+  return (
+    q.options.length === 2 &&
+    q.options[0].html === 'Certo' &&
+    q.options[1].html === 'Errado'
+  )
+}
+
+/** Rótulo do formato de um pack */
+export function packFormatLabel(pack: SimuladoPack): string {
+  if (pack.questionFormat === 'certo_errado') return 'Certo/Errado'
+  if (pack.questionFormat === 'multipla_escolha') return 'A, B, C, D, E'
+  return isCertErrado(pack.questions[0]) ? 'Certo/Errado' : 'A, B, C, D, E'
+}
+
+/** Rótulo de resposta C/E (gabarito) */
+export function answerLabel(q: Question): string {
+  return isCertErrado(q) ? (q.answer === 'a' ? 'CERTO' : 'ERRADO') : `alternativa “${q.answer}”`
 }
 
 /** Formata minutos em rótulo amigável (ex.: 330 → "5h30", 90 → "1h30", 45 → "45min") */

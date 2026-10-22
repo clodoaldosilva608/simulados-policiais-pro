@@ -40,7 +40,9 @@ import { HtmlContent } from './html-content'
 import { TextBlockCard } from './text-block-card'
 import {
   formatDuration,
+  answerLabel,
   getPackSubject,
+  isCertErrado,
   type ExamState,
   type OptionKey,
   type Question,
@@ -69,6 +71,7 @@ export function ExamScreen({ pack, state, onAnswer, onToggleMark, onNavigate, on
   const QUESTIONS = pack.questions
   const question = QUESTIONS[state.current]
   const subject = getPackSubject(pack, question.subjectId)
+  const isCE = isCertErrado(question)
   const answeredCount = QUESTIONS.filter((q) => state.answers[q.id]).length
   const markedSet = new Set(state.marked)
   const isAnswered = Boolean(state.answers[question.id])
@@ -103,7 +106,7 @@ export function ExamScreen({ pack, state, onAnswer, onToggleMark, onNavigate, on
     onAnswer(question.id, key)
   }
 
-  // Atalhos de teclado (a–e, 1–5, setas) — apenas alternativas existentes na questão
+  // Atalhos de teclado (a–e, 1–5, c/e em Certo/Errado, setas)
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null
@@ -112,6 +115,11 @@ export function ExamScreen({ pack, state, onAnswer, onToggleMark, onNavigate, on
       const opt = question.options.find((o) => o.key === key)
       if (opt) {
         handleAnswer(opt.key)
+        return
+      }
+      // Em questões Certo/Errado, as teclas “c” e “e” também respondem
+      if (isCE && (key === 'c' || key === 'e')) {
+        handleAnswer(key === 'c' ? 'a' : 'b')
         return
       }
       const num = Number.parseInt(key, 10)
@@ -280,7 +288,57 @@ export function ExamScreen({ pack, state, onAnswer, onToggleMark, onNavigate, on
                     <HtmlContent html={question.statement} />
                   </div>
 
-                  {/* Alternativas */}
+                  {/* Alternativas — Certo/Errado renderiza botões dedicados */}
+                  {isCE ? (
+                    <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      {question.options.map((opt) => {
+                        const isCerto = opt.html === 'Certo'
+                        const selected = state.answers[question.id] === opt.key
+                        const isCorrect = opt.key === question.answer
+                        let cls = isCerto
+                          ? 'border-emerald-300 bg-white hover:border-emerald-500 hover:bg-emerald-50'
+                          : 'border-red-300 bg-white hover:border-red-500 hover:bg-red-50'
+                        let badgeCls = isCerto
+                          ? 'border border-emerald-600 bg-emerald-600 text-white'
+                          : 'border border-red-500 bg-red-500 text-white'
+                        if (locked) {
+                          if (isCorrect) {
+                            cls = isCerto ? 'border-emerald-500 bg-emerald-50 ring-2 ring-emerald-400/40' : 'border-emerald-500 bg-emerald-50 ring-2 ring-emerald-400/40'
+                            badgeCls = 'border border-emerald-600 bg-emerald-600 text-white'
+                          } else if (selected) {
+                            cls = 'border-red-400 bg-red-50 ring-2 ring-red-400/40'
+                            badgeCls = 'border border-red-500 bg-red-500 text-white'
+                          } else {
+                            cls = 'border-slate-200 bg-white opacity-60'
+                          }
+                        } else if (selected) {
+                          cls = isCerto
+                            ? 'border-emerald-600 bg-emerald-50 ring-2 ring-emerald-500/40'
+                            : 'border-red-600 bg-red-50 ring-2 ring-red-500/40'
+                        }
+                        return (
+                          <button
+                            key={opt.key}
+                            type="button"
+                            disabled={locked}
+                            onClick={() => handleAnswer(opt.key)}
+                            className={`flex items-center gap-3 rounded-xl border-2 px-5 py-6 text-left transition-all ${cls} ${
+                              locked ? 'cursor-default' : 'cursor-pointer'
+                            }`}
+                          >
+                            <span
+                              className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-base font-black uppercase ${badgeCls}`}
+                            >
+                              {isCerto ? 'C' : 'E'}
+                            </span>
+                            <span className="text-lg font-bold text-slate-900">{opt.html}</span>
+                            {locked && isCorrect && <CheckCircle2 className="ml-auto h-6 w-6 shrink-0 text-emerald-600" />}
+                            {locked && selected && !isCorrect && <XCircle className="ml-auto h-6 w-6 shrink-0 text-red-500" />}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  ) : (
                   <div className="mt-4 space-y-2.5">
                     {question.options.map((opt) => {
                       const selected = state.answers[question.id] === opt.key
@@ -323,6 +381,7 @@ export function ExamScreen({ pack, state, onAnswer, onToggleMark, onNavigate, on
                       )
                     })}
                   </div>
+                  )}
 
                   {/* Feedback do modo estudo */}
                   {locked && (
@@ -333,7 +392,7 @@ export function ExamScreen({ pack, state, onAnswer, onToggleMark, onNavigate, on
                         </div>
                       ) : (
                         <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-800">
-                          <XCircle className="h-5 w-5" /> Resposta incorreta — gabarito: alternativa “{question.answer}”.
+                          <XCircle className="h-5 w-5" /> Resposta incorreta — gabarito: {answerLabel(question)}.
                         </div>
                       )}
                       <div className="mt-3 rounded-lg border-l-4 border-amber-400 bg-amber-50/70 px-4 py-3">
