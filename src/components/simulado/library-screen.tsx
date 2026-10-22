@@ -362,7 +362,7 @@ export function LibraryScreen({
             <ShieldCheck className="h-6 w-6" />
           </div>
           <div className="min-w-0">
-            <p className="truncate text-base font-bold leading-tight">
+            <p className="truncate text-[15px] font-bold leading-tight sm:text-base">
               <span className="sm:hidden">Simulados Pro</span>
               <span className="hidden sm:inline">Simulados Policiais Pro</span>
             </p>
