@@ -59,6 +59,10 @@ interface LibraryScreenProps {
   onOpen: (docId: string) => void
   onDelete: (docId: string) => void
   onUploadCompleted: () => void
+  /** Estado da licença: assinante ou teste grátis */
+  licenseBadge: { active: boolean; trialDaysLeft: number | null }
+  /** Abre a tela de acesso/gerenciar assinatura */
+  onManageAccess: () => void
 }
 
 function formatBytes(bytes: number): string {
@@ -177,9 +181,18 @@ function OfficialPackCard({
   )
 }
 
-export function LibraryScreen({ docs, loading, savedInfo, onOpen, onDelete, onUploadCompleted }: LibraryScreenProps) {
+export function LibraryScreen({
+  docs,
+  loading,
+  savedInfo,
+  onOpen,
+  onDelete,
+  onUploadCompleted,
+  licenseBadge,
+  onManageAccess,
+}: LibraryScreenProps) {
   const [dialogOpen, setDialogOpen] = useState(false)
-  const [resumeDoc, setResumeDoc] = useState<DocumentSummary | null>(null)
+  const [resumeDocId, setResumeDocId] = useState<string | null>(null)
   const [initialFile, setInitialFile] = useState<File | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<DocumentSummary | null>(null)
   const [dragOver, setDragOver] = useState(false)
@@ -187,13 +200,13 @@ export function LibraryScreen({ docs, loading, savedInfo, onOpen, onDelete, onUp
   const dropCount = useRef(0)
 
   const openNewUpload = () => {
-    setResumeDoc(null)
+    setResumeDocId(null)
     setInitialFile(null)
     setDialogOpen(true)
   }
 
-  const openResume = (doc: DocumentSummary) => {
-    setResumeDoc(doc)
+  const openResume = (docId: string) => {
+    setResumeDocId(docId)
     setInitialFile(null)
     setDialogOpen(true)
   }
@@ -206,7 +219,7 @@ export function LibraryScreen({ docs, loading, savedInfo, onOpen, onDelete, onUp
       (x) => x.type === 'application/pdf' || x.name.toLowerCase().endsWith('.pdf')
     )
     if (f) {
-      setResumeDoc(null)
+      setResumeDocId(null)
       setInitialFile(f)
       setDialogOpen(true)
     }
@@ -234,18 +247,47 @@ export function LibraryScreen({ docs, loading, savedInfo, onOpen, onDelete, onUp
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-400 text-slate-950">
             <ShieldCheck className="h-6 w-6" />
           </div>
-          <div>
+          <div className="min-w-0">
             <p className="text-base font-bold leading-tight">Simulados Policiais Pro</p>
-            <p className="text-xs leading-tight text-slate-400">
+            <p className="hidden text-xs leading-tight text-slate-400 sm:block">
               Provas oficiais (PF, PC, PM, PRF, Polícia Penal) + transforme qualquer PDF em simulado
             </p>
           </div>
-          <Button
-            onClick={openNewUpload}
-            className="ml-auto bg-amber-500 font-bold text-slate-950 hover:bg-amber-400"
-          >
-            <Plus className="mr-1.5 h-4 w-4" /> Novo simulado
-          </Button>
+          <div className="ml-auto flex shrink-0 items-center gap-2">
+            <button
+              type="button"
+              onClick={onManageAccess}
+              aria-label="Gerenciar assinatura"
+              className={`shrink-0 whitespace-nowrap rounded-full px-2.5 py-1.5 text-[11px] font-bold transition-colors sm:px-3 ${
+                licenseBadge.active
+                  ? 'bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25'
+                  : 'bg-amber-400/15 text-amber-300 hover:bg-amber-400/25'
+              }`}
+            >
+              {licenseBadge.active ? (
+                <>
+                  <span className="sm:hidden">★</span>
+                  <span className="hidden sm:inline">★ Assinante</span>
+                </>
+              ) : licenseBadge.trialDaysLeft !== null ? (
+                <>
+                  <span className="sm:hidden">{licenseBadge.trialDaysLeft}d</span>
+                  <span className="hidden sm:inline">Teste grátis • {licenseBadge.trialDaysLeft}d</span>
+                </>
+              ) : (
+                <>
+                  <span className="sm:hidden">Teste</span>
+                  <span className="hidden sm:inline">Teste grátis</span>
+                </>
+              )}
+            </button>
+            <Button
+              onClick={openNewUpload}
+              className="bg-amber-500 font-bold text-slate-950 hover:bg-amber-400"
+            >
+              <Plus className="mr-1.5 h-4 w-4" /> Novo
+            </Button>
+          </div>
         </div>
       </header>
 
@@ -530,7 +572,7 @@ export function LibraryScreen({ docs, loading, savedInfo, onOpen, onDelete, onUp
                         )}
                         {doc.status === 'processing' && (
                           <Button
-                            onClick={() => openResume(doc)}
+                            onClick={() => openResume(doc.id)}
                             variant="outline"
                             className="flex-1 border-slate-300 bg-white font-semibold"
                           >
@@ -539,7 +581,7 @@ export function LibraryScreen({ docs, loading, savedInfo, onOpen, onDelete, onUp
                         )}
                         {doc.status === 'error' && (
                           <Button
-                            onClick={() => openResume(doc)}
+                            onClick={() => openResume(doc.id)}
                             className="flex-1 bg-slate-900 font-bold text-white hover:bg-slate-800"
                           >
                             <RotateCcw className="mr-1.5 h-4 w-4" /> Tentar novamente
@@ -560,13 +602,16 @@ export function LibraryScreen({ docs, loading, savedInfo, onOpen, onDelete, onUp
           Simulados Policiais Pro • provas oficiais com gabarito + qualquer PDF transformado em simulado por IA.
           Sempre confira o gabarito com a fonte oficial.
         </p>
+        <p className="mt-1 flex items-center justify-center gap-1 text-center text-[11px] text-slate-300">
+          <ShieldCheck className="h-3 w-3" /> Seus PDFs e progressos ficam salvos apenas neste aparelho.
+        </p>
       </footer>
 
       {/* Dialog de upload/processamento */}
       <UploadDialog
         open={dialogOpen}
         onOpenChange={setDialogOpen}
-        resumeDoc={resumeDoc}
+        resumeDocId={resumeDocId}
         initialFile={initialFile}
         onCompleted={onUploadCompleted}
       />

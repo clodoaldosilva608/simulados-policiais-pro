@@ -1,4 +1,7 @@
-import ZAI from 'z-ai-web-dev-sdk'
+/**
+ * Helpers isomórficos de geração de questões (podem ser usados no cliente).
+ * As chamadas reais de IA ficam em /api/generate (server-side).
+ */
 
 export type QuestionStyle = 'multipla' | 'certo_errado'
 
@@ -22,6 +25,15 @@ export interface GeneratedQuestion {
   comment: string
 }
 
+export const QUESTIONS_PER_CHUNK: Record<QuestionStyle, number> = {
+  multipla: 5,
+  certo_errado: 6,
+}
+
+export function questionsPerChunk(style: QuestionStyle): number {
+  return QUESTIONS_PER_CHUNK[style]
+}
+
 /** Escapa HTML e converte formatação markdown simples para HTML seguro */
 export function sanitizeToHtml(text: string): string {
   let out = text
@@ -36,7 +48,7 @@ export function sanitizeToHtml(text: string): string {
   return out.trim()
 }
 
-function extractJson(raw: string): unknown {
+export function extractJson(raw: string): unknown {
   // remove cercas de código e texto ao redor
   let s = raw.trim()
   s = s.replace(/```(?:json)?/gi, '').trim()
@@ -129,7 +141,7 @@ function normalizeQuestion(
   }
 }
 
-function buildPrompt(chunk: string, style: QuestionStyle, count: number): string {
+export function buildPrompt(chunk: string, style: QuestionStyle, count: number): string {
   const styleRule =
     style === 'certo_errado'
       ? `Elabore ${count} AFIRMATIVAS no estilo Certo/Errado (banca CEBRASPE): cada questão é uma afirmação que o candidato julga como Certa ou Errada. O campo "options" deve conter exatamente duas alternativas: [{"key":"a","html":"Certo"},{"key":"b","html":"Errado"}] e o "answer" deve ser "a" (Certo) ou "b" (Errado). Varie entre afirmativas certas e erradas.`
@@ -156,45 +168,15 @@ ${chunk}
 """`
 }
 
-/** Gera questões a partir de um bloco de texto usando IA. Tenta 2 vezes. */
-export async function generateQuestionsForChunk(
-  chunk: string,
-  style: QuestionStyle,
-  count: number,
-): Promise<GeneratedQuestion[]> {
-  const zai = await ZAI.create()
-  const prompt = buildPrompt(chunk, style, count)
-
-  let lastError: unknown = null
-  for (let attempt = 0; attempt < 2; attempt++) {
-    try {
-      const completion = await zai.chat.completions.create({
-        messages: [
-          {
-            role: 'system',
-            content:
-              'Você é um elaborador de questões de concursos. Responde SEMPRE apenas com JSON válido, sem markdown e sem explicações.',
-          },
-          { role: 'user', content: prompt },
-        ],
-        temperature: 0.4,
-      })
-
-      const raw = completion.choices[0]?.message?.content ?? ''
-      const parsed = extractJson(raw) as { questions?: unknown }
-      if (!parsed || !Array.isArray(parsed.questions)) throw new Error('JSON sem array de questões')
-
-      const valid: GeneratedQuestion[] = []
-      for (const q of parsed.questions) {
-        const nq = normalizeQuestion(q, style, valid.length)
-        if (nq) valid.push(nq)
-      }
-      if (valid.length === 0) throw new Error('Nenhuma questão válida retornada pela IA')
-      return valid
-    } catch (err) {
-      lastError = err
-    }
+/** Interpreta a resposta da IA (string) e devolve questões válidas */
+export function parseGeneratedQuestions(raw: string, style: QuestionStyle): GeneratedQuestion[] {
+  const parsed = extractJson(raw) as { questions?: unknown }
+  if (!parsed || !Array.isArray(parsed.questions)) throw new Error('JSON sem array de questões')
+  const valid: GeneratedQuestion[] = []
+  for (const q of parsed.questions) {
+    const nq = normalizeQuestion(q, style, valid.length)
+    if (nq) valid.push(nq)
   }
-
-  throw lastError instanceof Error ? lastError : new Error('Falha ao gerar questões com IA')
+  if (valid.length === 0) throw new Error('Nenhuma questão válida retornada pela IA')
+  return valid
 }

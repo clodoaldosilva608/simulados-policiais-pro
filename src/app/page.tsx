@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { Loader2, GraduationCap, ShieldCheck } from 'lucide-react'
+import { LandingPage } from '@/components/landing/landing-page'
+import { AccessScreen } from '@/components/simulado/access-screen'
 import { LibraryScreen, type SavedInfo } from '@/components/simulado/library-screen'
 import { WelcomeScreen, type AttemptInfo } from '@/components/simulado/welcome-screen'
 import { ExamScreen } from '@/components/simulado/exam-screen'
@@ -16,24 +18,19 @@ import {
   type OptionKey,
   type SimuladoPack,
 } from '@/data/simulado'
+import { useLicense } from '@/lib/license'
+import {
+  listLocalDocuments,
+  getLocalDocument,
+  deleteLocalDocument,
+  addLocalAttempt,
+  listLocalAttempts,
+  localDocToPack,
+} from '@/lib/local-db'
 
 const STATIC_IDS = new Set(STATIC_PACKS.map((p) => p.id))
 
-type Phase = 'library' | 'welcome' | 'exam' | 'results' | 'review'
-
-interface PackResponse {
-  document: { id: string; title: string; subtitle?: string; style: string; status: string }
-  questions: {
-    id: number
-    subjectId: string
-    textRef?: string
-    statement: string
-    options: { key: OptionKey; html: string }[]
-    answer: OptionKey
-    comment: string
-  }[]
-  textBlocks: Record<string, { refId: string; title: string; paragraphs: string[]; source?: string }>
-}
+type Phase = 'landing' | 'access' | 'library' | 'welcome' | 'exam' | 'results' | 'review'
 
 const storageKeyFor = (docId: string) => `simulado-${docId}`
 
@@ -87,34 +84,12 @@ function peekSavedMeta(docId: string): SavedInfo | null {
   }
 }
 
-/** Converte a resposta da API em um SimuladoPack */
-function buildPack(data: PackResponse): SimuladoPack {
-  const subjectIds: string[] = []
-  for (const q of data.questions) {
-    if (!subjectIds.includes(q.subjectId)) subjectIds.push(q.subjectId)
-  }
-  const textBlocks: SimuladoPack['textBlocks'] = {}
-  for (const [refId, tb] of Object.entries(data.textBlocks)) {
-    textBlocks[refId] = { id: tb.refId, title: tb.title, paragraphs: tb.paragraphs, source: tb.source }
-  }
-  return {
-    id: data.document.id,
-    title: data.document.title,
-    subtitle: data.document.style === 'certo_errado' ? 'Gerado do seu PDF • Estilo Certo/Errado' : 'Gerado do seu PDF • Múltipla escolha',
-    footer: `Questões geradas por inteligência artificial a partir do PDF “${data.document.title}”. Sempre confira o conteúdo com a fonte oficial de estudo.`,
-    durationMinutes: Math.max(20, Math.ceil(data.questions.length * 3)), // ~3 min por questão
-    passPct: 70,
-    subjects: subjectIds.map((sid) => ({ id: sid, name: sid, professor: '' })),
-    textBlocks,
-    questions: data.questions,
-  }
-}
-
 export default function Home() {
+  const license = useLicense()
   const [hydrated, setHydrated] = useState(false)
   const [phase, setPhase] = useState<Phase>('library')
 
-  // Biblioteca
+  // Biblioteca (simulados de PDF salvos localmente)
   const [docs, setDocs] = useState<DocumentSummary[]>([])
   const [docsLoading, setDocsLoading] = useState(true)
   const [savedInfo, setSavedInfo] = useState<Record<string, SavedInfo>>({})
@@ -126,7 +101,7 @@ export default function Home() {
   const [state, setState] = useState<ExamState | null>(null)
   const [savedMeta, setSavedMeta] = useState<{ finished: boolean; mode: ExamMode; name: string } | null>(null)
 
-  const refreshSavedInfo = useCallback((list: DocumentSummary[]) => {
+  const refreshSavedInfo = useCallback((list: { id: string }[]) => {
     const info: Record<string, SavedInfo> = {}
     for (const p of STATIC_PACKS) {
       const meta = peekSavedMeta(p.id)
@@ -151,22 +126,31 @@ export default function Home() {
 
   const loadDocs = useCallback(async () => {
     try {
-      const res = await fetch('/api/documents')
-      if (res.ok) {
-        const data = (await res.json()) as { documents: DocumentSummary[] }
-        setDocs(data.documents)
-        refreshSavedInfo(data.documents)
-      }
+      const list = await listLocalDocuments()
+      setDocs(list)
+      refreshSavedInfo(list)
     } catch {
-      /* segue com lista vazia */
+      setDocs([])
     } finally {
       setDocsLoading(false)
     }
   }, [refreshSavedInfo])
 
+  // Fase inicial: licença válida → biblioteca; sem acesso → landing
+  useEffect(() => {
+    if (license.status === 'loading') return
+    setHydrated(true)
+    if (license.allowed) {
+      setPhase((p) => (p === 'landing' || p === 'access' ? 'library' : p))
+    } else {
+      setPack(null)
+      setState(null)
+      setPhase((p) => (p === 'landing' || p === 'access' ? p : 'landing'))
+    }
+  }, [license.status, license.allowed])
+
   useEffect(() => {
     void loadDocs()
-    setHydrated(true)
   }, [loadDocs])
 
   const handleUploadCompleted = useCallback(() => {
@@ -186,22 +170,14 @@ export default function Home() {
     setPackLoading(true)
     setPhase('welcome') // exibe carregamento na transição
     try {
-      const [docRes, attRes] = await Promise.all([
-        fetch(`/api/documents/${docId}`),
-        fetch(`/api/documents/${docId}/attempts`).catch(() => null),
-      ])
-      if (!docRes.ok) throw new Error('Falha ao carregar o simulado')
-      const data = (await docRes.json()) as PackResponse
-      const built = buildPack(data)
+      const doc = await getLocalDocument(docId)
+      if (!doc) throw new Error('Simulado não encontrado')
+      const built = localDocToPack(doc)
       setPack(built)
       const saved = loadSaved(built.id, built.questions.length - 1)
       setSavedMeta(saved ? { finished: saved.finished, mode: saved.mode, name: saved.name } : null)
-      if (attRes && attRes.ok) {
-        const attData = (await attRes.json()) as { attempts: AttemptInfo[] }
-        setAttempts(attData.attempts)
-      } else {
-        setAttempts([])
-      }
+      const localAttempts = await listLocalAttempts(doc.id)
+      setAttempts(localAttempts)
     } catch {
       setPack(null)
       setPhase('library')
@@ -264,22 +240,21 @@ export default function Home() {
     setState((s) => {
       if (!s || s.finished) return s
       const finished = { ...s, finished: true, finishedAt: Date.now() }
-      // Registra a tentativa no servidor (apenas simulados de PDF)
+      // Registra a tentativa no banco LOCAL (apenas simulados de PDF)
       if (pack && !STATIC_IDS.has(pack.id)) {
         const total = pack.questions.length
         const correct = pack.questions.filter((q) => finished.answers[q.id] === q.answer).length
-        void fetch(`/api/documents/${pack.id}/attempts`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            name: finished.name,
-            mode: finished.mode,
-            correct,
-            total,
-            pct: total > 0 ? Math.round((correct / total) * 100) : 0,
-            timeUsedMs: (finished.finishedAt ?? Date.now()) - finished.startedAt,
-          }),
-        }).catch(() => undefined)
+        void addLocalAttempt({
+          id: `att-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          docId: pack.id,
+          name: finished.name,
+          mode: finished.mode,
+          correct,
+          total,
+          pct: total > 0 ? Math.round((correct / total) * 100) : 0,
+          timeUsedMs: (finished.finishedAt ?? Date.now()) - finished.startedAt,
+          createdAt: new Date().toISOString(),
+        })
       }
       return finished
     })
@@ -290,7 +265,7 @@ export default function Home() {
   const handleDelete = useCallback(
     async (docId: string) => {
       try {
-        await fetch(`/api/documents/${docId}`, { method: 'DELETE' })
+        await deleteLocalDocument(docId)
       } catch {
         /* segue */
       }
@@ -304,12 +279,65 @@ export default function Home() {
     [loadDocs]
   )
 
-  if (!hydrated) {
+  // Splash enquanto carrega licença/estado
+  if (!hydrated || license.status === 'loading') {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-slate-50 text-slate-400">
         <ShieldCheck className="h-10 w-10 animate-pulse text-amber-500" />
         <p className="text-sm">Carregando simulados...</p>
       </div>
+    )
+  }
+
+  // Sem acesso: landing ou tela de acesso
+  if (!license.allowed) {
+    if (phase === 'access') {
+      return (
+        <AccessScreen
+          license={license.license}
+          onBack={() => setPhase('landing')}
+          onActivated={(code) => {
+            license.activate(code)
+            setPhase('library')
+          }}
+          onStartTrial={() => {
+            license.startTrial()
+            setPhase('library')
+          }}
+          onSignOut={() => {
+            license.signOut()
+            setPhase('landing')
+          }}
+        />
+      )
+    }
+    return (
+      <LandingPage
+        onEnterAccess={() => setPhase('access')}
+        onStartTrial={() => {
+          license.startTrial()
+          setPhase('library')
+        }}
+      />
+    )
+  }
+
+  if (phase === 'access') {
+    // Assinante/teste gerenciando acesso
+    return (
+      <AccessScreen
+        license={license.license}
+        onBack={() => setPhase('library')}
+        onActivated={(code) => {
+          license.activate(code)
+          setPhase('library')
+        }}
+        onStartTrial={() => setPhase('library')}
+        onSignOut={() => {
+          license.signOut()
+          setPhase('landing')
+        }}
+      />
     )
   }
 
@@ -322,6 +350,11 @@ export default function Home() {
         onOpen={(id) => void openDoc(id)}
         onDelete={(id) => void handleDelete(id)}
         onUploadCompleted={handleUploadCompleted}
+        licenseBadge={{
+          active: license.status === 'active',
+          trialDaysLeft: license.daysLeft,
+        }}
+        onManageAccess={() => setPhase('access')}
       />
     )
   }
