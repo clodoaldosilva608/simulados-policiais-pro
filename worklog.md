@@ -207,3 +207,20 @@ Work Log:
 Stage Summary:
 - PAINEL COM MÉTRICAS POR DISCIPLINA NO AR: acertos/erros/aproveitamento gerais + barras por matéria agregando todos os simulados concluídos (oficiais e de PDF), validado matematicamente contra o gabarito oficial da PF
 - Próximos passos possíveis: filtros por período (7/30 dias), evolução temporal (linha), metas de estudo
+
+---
+Task ID: 10
+Agent: main (Z.ai)
+Task: Menu hambúrguer na dashboard com todas as opções + botão Sair + botão Assinar o plano
+
+Work Log:
+- library-screen.tsx: botão hambúrguer (Menu) no header da biblioteca abre Sheet lateral (shadcn/radix) com: cabeçalho escuro (avatar + "Olá, {nome}" + e-mail + badge de status "Teste grátis • Xd restantes" ou "Assinatura ativa"); itens — ASSINAR O PLANO (Crown, destaque âmbar, abre checkout Cakto SITE.checkoutUrl em nova aba; assinante vê bloco verde "Assinatura ativa" no lugar), Minha conta (status/ativação/aparelho → AccessScreen), Novo simulado (abre diálogo PDF), Meu desempenho (scrollIntoView do painel #painel-desempenho), Suporte (mailto:suporte@…); rodapé com botão SAIR DESTE APARELHO (LogOut) + assinatura do produto
+- MenuItem helper (ação ou <a>); título mobile do header agora "Simulados Pro" (15px) e completo no desktop; badge de status oculto no mobile (hidden sm:block) pois o menu já mostra o status — header 390px limpo: logo + Simulados Pro + ☰ + Novo
+- page.tsx: LibraryScreen recebe onSignOut={() => void session.logout()} — após logout o efeito de fase leva à landing automaticamente
+- Validado: lint limpo, build OK; 4 deploys CLI READY (dpl d5xf7llez, 62mlq2r37, +2 ajustes header) e pushes GitHub c7dcac8, 42efc28, 4e263ac, 84a2f11
+- E2E PRODUÇÃO 390x844 (conta e2e.menu.t9): ☰ visível e abre menu; "Assinar o plano" abriu Cakto Checkout (pay.cakto.com.br/v5zisya) em nova aba; "Minha conta" abriu Minha conta (status/ativação/sair); "Novo simulado" abriu diálogo Transformar PDF; "Meu desempenho" rolou ao painel; Suporte é link mailto; "Sair deste aparelho" encerrou sessão e voltou à landing (login posterior OK); 0 erros de console; screenshots /tmp/e2e-menu-aberto.png, /tmp/e2e-menu-final.png, /tmp/e2e-header-v4.png, /tmp/e2e-menu-minhaconta.png, /tmp/e2e-menu-sair.png
+- Limpeza: conta de teste excluída via admin API (param correto é "id", não "userId") — restam só contas do dono
+
+Stage Summary:
+- DASHBOARD COM MENU COMPLETO NO AR: ☰ no cabeçalho concentra assinatura (checkout Cakto), conta, novo simulado, desempenho, suporte e sair — inclusive para assinantes (bloco "Assinatura ativa")
+- Header mobile reorganizado: status de acesso agora vive no menu; título curto sem truncar
