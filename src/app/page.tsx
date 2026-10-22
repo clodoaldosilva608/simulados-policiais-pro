@@ -32,16 +32,27 @@ import {
 } from '@/lib/local-db'
 
 function statsFromAttempts(attempts: LocalAttempt[]): DashboardStats {
+  // Dedupe defensivo: a mesma prova concluída no mesmo instante (±60s) conta
+  // uma única vez — protege o painel de qualquer duplicidade histórica.
+  const ordered = [...attempts].sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1))
+  const kept: { docId: string; t: number }[] = []
+  const unique: LocalAttempt[] = []
+  for (const a of ordered) {
+    const t = new Date(a.createdAt).getTime()
+    if (kept.some((k) => k.docId === a.docId && Math.abs(k.t - t) < 60_000)) continue
+    kept.push({ docId: a.docId, t })
+    unique.push(a)
+  }
   let answered = 0
   let correct = 0
-  for (const a of attempts) {
+  for (const a of unique) {
     const ans = typeof a.answered === 'number' ? a.answered : a.total
     answered += Math.min(Math.max(ans, 0), a.total)
     correct += Math.min(Math.max(a.correct, 0), a.total)
   }
   const wrong = Math.max(0, answered - correct)
   const pct = answered > 0 ? Math.round((correct / answered) * 100) : 0
-  return { attempts: attempts.length, answered, correct, wrong, pct }
+  return { attempts: unique.length, answered, correct, wrong, pct }
 }
 
 /** Nome para exibição: nome cadastrado ou deriva do e-mail */
@@ -96,6 +107,13 @@ async function migrateLegacyFinishedStates(docs: { id: string; title: string }[]
       if (!parsed?.finished || typeof parsed.finishedAt !== 'number') continue
       const attemptId = `att-mig-${docId}-${parsed.finishedAt}`
       if (await hasAttemptWithId(attemptId)) continue
+      // Já existe tentativa registrada nesta conclusão? (ex.: gravação feita
+      // ao finalizar o simulado) — evita contar a mesma prova duas vezes.
+      const existing = await listLocalAttempts(docId)
+      const alreadyRecorded = existing.some(
+        (a) => Math.abs(new Date(a.createdAt).getTime() - parsed.finishedAt!) < 60_000,
+      )
+      if (alreadyRecorded) continue
       let questions: { id: string; answer: OptionKey }[] | null = null
       const staticPack = getStaticPack(docId)
       if (staticPack) {
