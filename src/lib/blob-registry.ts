@@ -33,6 +33,15 @@ export interface RegistryUser {
   notes?: string
   device?: string
   platform?: string
+  /* ---------- conta autenticada (e-mail + senha) ---------- */
+  /** e-mail de LOGIN normalizado (índice único) — igual ao campo email */
+  authEmail?: string
+  /** hash scrypt (formato "scrypt:<saltB64url>:<keyB64url>") — nunca em texto plano */
+  passwordHash?: string
+  /** aparelho ÚNICO atualmente vinculado (deviceUid) — um dispositivo por vez */
+  activeDevice?: string
+  /** quando o vínculo de aparelho foi definido */
+  activeDeviceAt?: number
   createdAt: number
   updatedAt: number
   lastSeen: number
@@ -60,7 +69,7 @@ export function blobConfigured(): boolean {
 /* Primitivas JSON sobre o Blob                                        */
 /* ------------------------------------------------------------------ */
 
-async function readJson<T>(pathname: string): Promise<T | null> {
+export async function readJson<T>(pathname: string): Promise<T | null> {
   try {
     // SDK v2: get() retorna { stream, blob (metadados), headers }
     const { stream } = await get(pathname, { access: 'private', useCache: false })
@@ -89,7 +98,7 @@ async function streamToText(stream: unknown): Promise<string> {
   return Buffer.concat(chunks).toString()
 }
 
-async function writeJson(pathname: string, data: unknown): Promise<void> {
+export async function writeJson(pathname: string, data: unknown): Promise<void> {
   await put(pathname, JSON.stringify(data), {
     access: 'private',
     contentType: 'application/json',

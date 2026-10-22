@@ -72,6 +72,10 @@ export interface AdminUser {
   notes?: string
   device?: string
   platform?: string
+  /** conta autenticada */
+  authEmail?: string
+  activeDevice?: string
+  activeDeviceAt?: number
   createdAt: number
   updatedAt: number
   lastSeen: number
@@ -394,6 +398,12 @@ export function UsersPanel({ users, reload }: { users: AdminUser[]; reload: () =
                 {detail.activatedAt && <DetailLine label="Ativado em">{fmt(detail.activatedAt)}</DetailLine>}
                 {detail.canceledAt && <DetailLine label="Cancelado em">{fmt(detail.canceledAt)}</DetailLine>}
                 <DetailLine label="Aparelho">{detail.platform ?? '—'} · {detail.device ?? '—'}</DetailLine>
+                {detail.activeDevice && (
+                  <DetailLine label="Aparelho vinculado (único)">
+                    {detail.activeDevice.slice(0, 14)}… · desde {fmt(detail.activeDeviceAt)}
+                  </DetailLine>
+                )}
+                {detail.authEmail && <DetailLine label="Login da conta">{detail.authEmail}</DetailLine>}
                 {detail.ident && <DetailLine label="Identificador">{detail.ident}</DetailLine>}
                 {detail.adminGrant && <DetailLine label="Acesso manual">sim (vitalício)</DetailLine>}
               </div>

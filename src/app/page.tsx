@@ -18,7 +18,7 @@ import {
   type OptionKey,
   type SimuladoPack,
 } from '@/data/simulado'
-import { useLicense, trackRegistry } from '@/lib/license'
+import { useSession } from '@/lib/session'
 import {
   listLocalDocuments,
   getLocalDocument,
@@ -85,9 +85,10 @@ function peekSavedMeta(docId: string): SavedInfo | null {
 }
 
 export default function Home() {
-  const license = useLicense()
+  const session = useSession()
   const [hydrated, setHydrated] = useState(false)
   const [phase, setPhase] = useState<Phase>('library')
+  const [accessMode, setAccessMode] = useState<'registrar' | 'entrar'>('registrar')
 
   // Biblioteca (simulados de PDF salvos localmente)
   const [docs, setDocs] = useState<DocumentSummary[]>([])
@@ -136,18 +137,28 @@ export default function Home() {
     }
   }, [refreshSavedInfo])
 
-  // Fase inicial: licença válida → biblioteca; sem acesso → landing
+  // Fase inicial: sessão válida com acesso → biblioteca; conta sem acesso →
+  // tela de conta/ativação; sem sessão → landing
   useEffect(() => {
-    if (license.status === 'loading') return
+    if (session.loading) return
     setHydrated(true)
-    if (license.allowed) {
+    const has =
+      session.authed &&
+      session.access &&
+      (session.access.status === 'trial' || session.access.status === 'active')
+    if (has) {
       setPhase((p) => (p === 'landing' || p === 'access' ? 'library' : p))
+    } else if (session.authed) {
+      // conta autenticada sem acesso: só pode navegar landing/acesso
+      setPhase((p) =>
+        p === 'library' || p === 'welcome' || p === 'exam' || p === 'results' || p === 'review'
+          ? 'access'
+          : p,
+      )
     } else {
-      setPack(null)
-      setState(null)
       setPhase((p) => (p === 'landing' || p === 'access' ? p : 'landing'))
     }
-  }, [license.status, license.allowed])
+  }, [session.loading, session.authed, session.access])
 
   useEffect(() => {
     void loadDocs()
@@ -279,30 +290,11 @@ export default function Home() {
     [loadDocs]
   )
 
-  // Registro central (painel admin): heartbeat do estado da licença
-  useEffect(() => {
-    const lic = license.license
-    if (!lic) return
-    const beat = () =>
-      trackRegistry(
-        lic.status === 'active'
-          ? { status: 'active', ident: lic.code, activatedAt: lic.activatedAt }
-          : { status: 'trial', trialStartedAt: lic.trialStartedAt },
-      )
-    beat()
-    const iv = window.setInterval(beat, 5 * 60 * 1000)
-    const onVisible = () => {
-      if (document.visibilityState === 'visible') beat()
-    }
-    document.addEventListener('visibilitychange', onVisible)
-    return () => {
-      window.clearInterval(iv)
-      document.removeEventListener('visibilitychange', onVisible)
-    }
-  }, [license.license])
+  // Heartbeat: o hook useSession já verifica /api/auth/me a cada 5 min e ao
+  // voltar para o app — valida sessão, dispositivo único e status de acesso.
 
-  // Splash enquanto carrega licença/estado
-  if (!hydrated || license.status === 'loading') {
+  // Splash enquanto carrega sessão/estado
+  if (!hydrated || session.loading) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-slate-50 text-slate-400">
         <ShieldCheck className="h-10 w-10 animate-pulse text-amber-500" />
@@ -311,54 +303,43 @@ export default function Home() {
     )
   }
 
-  // Sem acesso: landing ou tela de acesso
-  if (!license.allowed) {
+  const hasAccess =
+    session.authed && session.access && (session.access.status === 'trial' || session.access.status === 'active')
+
+  // Sem acesso: landing ou tela de conta (cadastro obrigatório)
+  if (!hasAccess) {
     if (phase === 'access') {
       return (
         <AccessScreen
-          license={license.license}
+          session={session}
+          initialMode={accessMode}
           onBack={() => setPhase('landing')}
-          onActivated={(code) => {
-            license.activate(code)
-            setPhase('library')
-          }}
-          onStartTrial={(email) => {
-            license.startTrial(email)
-            setPhase('library')
-          }}
-          onSignOut={() => {
-            license.signOut()
-            setPhase('landing')
-          }}
+          onDone={() => setPhase('library')}
         />
       )
     }
     return (
       <LandingPage
-        onEnterAccess={() => setPhase('access')}
+        onEnterAccess={() => {
+          setAccessMode('entrar')
+          setPhase('access')
+        }}
         onStartTrial={() => {
-          license.startTrial()
-          setPhase('library')
+          setAccessMode('registrar')
+          setPhase('access')
         }}
       />
     )
   }
 
   if (phase === 'access') {
-    // Assinante/teste gerenciando acesso
+    // Conta autenticada gerenciando acesso/assinatura
     return (
       <AccessScreen
-        license={license.license}
+        session={session}
+        initialMode={accessMode}
         onBack={() => setPhase('library')}
-        onActivated={(code) => {
-          license.activate(code)
-          setPhase('library')
-        }}
-        onStartTrial={() => setPhase('library')}
-        onSignOut={() => {
-          license.signOut()
-          setPhase('landing')
-        }}
+        onDone={() => setPhase('library')}
       />
     )
   }
@@ -373,9 +354,10 @@ export default function Home() {
         onDelete={(id) => void handleDelete(id)}
         onUploadCompleted={handleUploadCompleted}
         licenseBadge={{
-          active: license.status === 'active',
-          trialDaysLeft: license.daysLeft,
+          active: session.access?.status === 'active',
+          trialDaysLeft: session.access?.status === 'trial' ? (session.access.trialDaysLeft ?? 0) : null,
         }}
+        accountEmail={session.user?.email}
         onManageAccess={() => setPhase('access')}
       />
     )

@@ -1,12 +1,14 @@
 import { NextResponse, NextRequest } from 'next/server'
-import { appendEvent, blobConfigured, getAccessCodes, upsertUser } from '@/lib/blob-registry'
+import { appendEvent, blobConfigured, getAccessCodes, getUser, upsertUser } from '@/lib/blob-registry'
 import { checkCaktoSubscription, caktoConfigured } from '@/lib/cakto'
+import { accessOf, validateUserSession } from '@/lib/user-auth'
 
 export const runtime = 'nodejs'
 export const maxDuration = 30
 
 /**
- * Validação de acesso — duas formas:
+ * Validação de acesso — agora EXIGE CONTA AUTENTICADA (sessão válida neste
+ * aparelho). A ativação é vinculada à conta logada:
  *
  * 1. CÓDIGO — env ACCESS_CODES + códigos criados no painel admin (Blob).
  * 2. E-MAIL DA COMPRA (recomendado) — consulta a API pública da Cakto e
@@ -14,8 +16,8 @@ export const maxDuration = 30
  *    configurado (CAKTO_PRODUCT_ID). Credenciais da Cakto ficam 100% no
  *    servidor — nunca no navegador.
  *
- * Toda ativação válida é registrada no cadastro central de usuários
- * (Vercel Blob) para o painel admin.
+ * Toda ativação válida é registrada na CONTA do usuário (Vercel Blob) e
+ * aparece no painel admin. Contas bloqueadas/revogadas NÃO ativam.
  */
 
 /* ------------------------------------------------------------------ */
@@ -55,11 +57,46 @@ export async function GET() {
 /* ------------------------------------------------------------------ */
 
 export async function POST(req: NextRequest) {
+  // A ativação exige conta autenticada neste aparelho (um dispositivo por vez)
+  const check = await validateUserSession(req)
+  if (!check.ok) {
+    const messages: Record<string, string> = {
+      auth: 'Entre na sua conta para ativar o acesso.',
+      device: 'Esta conta está em uso em outro aparelho. Entre novamente aqui.',
+      banned: 'Conta bloqueada — não é possível ativar. Fale com o suporte.',
+      revoked: 'Acesso revogado — não é possível ativar. Fale com o suporte.',
+    }
+    const status = check.reason === 'banned' || check.reason === 'revoked' ? 403 : 401
+    return NextResponse.json(
+      { valid: false, message: messages[check.reason ?? 'auth'] },
+      { status },
+    )
+  }
+  const account = check.user!
+
   let body: { code?: unknown; email?: unknown }
   try {
     body = (await req.json()) as typeof body
   } catch {
     return NextResponse.json({ valid: false, message: 'Requisição inválida' }, { status: 400 })
+  }
+
+  /** Ativa a CONTA logada (fonte confiável — servidor) */
+  const activateAccount = async (ident: string, source: 'cakto_email' | 'code') => {
+    await upsertUser(
+      account.id,
+      { status: 'active', ident, activatedAt: Date.now(), source },
+      { serverAction: true },
+    )
+    void appendEvent({
+      type: source === 'cakto_email' ? 'activation_email' : 'activation_code',
+      email: account.email,
+      message:
+        source === 'cakto_email'
+          ? `Assinatura ativada por e-mail (Cakto): ${account.email}`
+          : `Assinatura ativada por código: ${ident} — conta ${account.email ?? account.id}`,
+      source: 'app',
+    })
   }
 
   /* ---------- 1) Validação por e-mail da compra (Cakto) ---------- */
@@ -73,25 +110,17 @@ export async function POST(req: NextRequest) {
     }
     const result = await checkCaktoSubscription(rawEmail)
 
-    // registro central: assinante ativo (painel admin)
     if (result.valid && blobConfigured()) {
       try {
-        await upsertUser(crypto.randomUUID(), {
-          email: rawEmail,
-          ident: rawEmail,
-          status: 'active',
-          source: 'cakto_email',
-          activatedAt: Date.now(),
-        })
-        void appendEvent({
-          type: 'activation_email',
-          email: rawEmail,
-          message: `Assinatura ativada por e-mail (Cakto): ${rawEmail}`,
-          source: 'app',
-        })
+        await activateAccount(rawEmail, 'cakto_email')
       } catch {
         /* não bloqueia a ativação do usuário */
       }
+      const updated = await getUser(account.id)
+      return NextResponse.json(
+        { ...result, access: updated ? accessOf(updated) : undefined },
+        { status: 200 },
+      )
     }
 
     return NextResponse.json(result, { status: 200 })
@@ -112,20 +141,14 @@ export async function POST(req: NextRequest) {
     if (codes.includes(code)) {
       if (blobConfigured()) {
         try {
-          await upsertUser(crypto.randomUUID(), {
-            ident: code,
-            status: 'active',
-            source: 'code',
-            activatedAt: Date.now(),
-          })
-          void appendEvent({
-            type: 'activation_code',
-            message: `Assinatura ativada por código: ${code}`,
-            source: 'app',
-          })
+          await activateAccount(code, 'code')
         } catch {
           /* não bloqueia a ativação */
         }
+        const updated = await getUser(account.id)
+        return NextResponse.json(
+          { valid: true, plan: 'mensal', access: updated ? accessOf(updated) : undefined },
+        )
       }
       return NextResponse.json({ valid: true, plan: 'mensal' })
     }

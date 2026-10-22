@@ -181,7 +181,7 @@ export function LandingPage({ onEnterAccess, onStartTrial }: LandingPageProps) {
                   onClick={onStartTrial}
                   className="h-13 h-[52px] bg-amber-400 px-6 text-base font-black text-slate-950 shadow-lg shadow-amber-400/20 hover:bg-amber-300"
                 >
-                  <PlayCircle className="mr-2 h-5 w-5" /> Começar teste grátis de {SITE.trialDays} dias
+                  <PlayCircle className="mr-2 h-5 w-5" /> Criar conta e testar {SITE.trialDays} dias grátis
                 </Button>
                 <Button
                   onClick={handleSubscribe}
@@ -192,7 +192,7 @@ export function LandingPage({ onEnterAccess, onStartTrial }: LandingPageProps) {
                 </Button>
               </div>
               <p className="mt-3 text-xs text-slate-400">
-                Sem cartão para testar • Cancele quando quiser • Pix, Pix Automático e cartão via Cakto
+                Cria conta com e-mail e senha • Um aparelho por vez • Cancele quando quiser • Pix, Pix Automático e cartão via Cakto
               </p>
             </motion.div>
 
@@ -343,7 +343,7 @@ export function LandingPage({ onEnterAccess, onStartTrial }: LandingPageProps) {
                   variant="outline"
                   className="mt-2 h-11 w-full border-slate-300 font-bold text-slate-700 hover:bg-slate-50"
                 >
-                  Prefiro testar {SITE.trialDays} dias grátis
+                  Prefiro criar conta e testar {SITE.trialDays} dias grátis
                 </Button>
                 <p className="mt-3 text-center text-[11px] leading-relaxed text-slate-400">
                   Pagamento processado pela Cakto (Pix, Pix Automático ou cartão). Depois de pagar, ative com o
@@ -388,7 +388,7 @@ export function LandingPage({ onEnterAccess, onStartTrial }: LandingPageProps) {
                 onClick={onStartTrial}
                 className="h-12 w-full max-w-xs bg-amber-400 px-6 font-black text-slate-950 hover:bg-amber-300 sm:w-auto"
               >
-                <PlayCircle className="mr-2 h-5 w-5" /> Testar {SITE.trialDays} dias grátis
+                <PlayCircle className="mr-2 h-5 w-5" /> Criar conta e testar grátis
               </Button>
               <Button
                 onClick={onEnterAccess}

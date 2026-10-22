@@ -61,6 +61,8 @@ interface LibraryScreenProps {
   onUploadCompleted: () => void
   /** Estado da licença: assinante ou teste grátis */
   licenseBadge: { active: boolean; trialDaysLeft: number | null }
+  /** E-mail da conta autenticada (badge do cabeçalho) */
+  accountEmail?: string
   /** Abre a tela de acesso/gerenciar assinatura */
   onManageAccess: () => void
 }
@@ -189,6 +191,7 @@ export function LibraryScreen({
   onDelete,
   onUploadCompleted,
   licenseBadge,
+  accountEmail,
   onManageAccess,
 }: LibraryScreenProps) {
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -257,7 +260,8 @@ export function LibraryScreen({
             <button
               type="button"
               onClick={onManageAccess}
-              aria-label="Gerenciar assinatura"
+              aria-label="Gerenciar conta e assinatura"
+              title={accountEmail ? `Conta: ${accountEmail}` : 'Gerenciar conta'}
               className={`shrink-0 whitespace-nowrap rounded-full px-2.5 py-1.5 text-[11px] font-bold transition-colors sm:px-3 ${
                 licenseBadge.active
                   ? 'bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25'
