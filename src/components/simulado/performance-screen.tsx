@@ -242,6 +242,8 @@ export function PerformanceScreen({
               <ul className="mt-4 space-y-2.5" aria-label="Provas concluídas">
                 {attempts.map((a) => {
                   const ans = typeof a.answered === 'number' ? a.answered : a.total
+                  // Aproveitamento sobre as RESPONDIDAS (mesma régua do painel)
+                  const pct = ans > 0 ? Math.round((a.correct / ans) * 100) : 0
                   return (
                     <li key={a.id}>
                       <Card className="transition-shadow hover:shadow-md">
@@ -272,7 +274,7 @@ export function PerformanceScreen({
                             </div>
                           </div>
                           <div className="shrink-0 text-right">
-                            <p className={`text-base font-black leading-tight ${pctColor(a.pct)}`}>{a.pct}%</p>
+                            <p className={`text-base font-black leading-tight ${pctColor(pct)}`}>{pct}%</p>
                             <p className="text-[11px] text-slate-500">
                               {a.correct} de {ans} {ans === 1 ? 'questão' : 'questões'}
                             </p>
