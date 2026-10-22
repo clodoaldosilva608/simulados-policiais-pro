@@ -424,6 +424,16 @@ export function LandingPage({ onEnterAccess, onStartTrial }: LandingPageProps) {
         <p className="mt-1.5 px-4 text-xs text-slate-600">
           Dúvidas? {SITE.supportEmail} • Pagamentos por Cakto
         </p>
+        <p className="mt-2 px-4">
+          <a
+            href="/admin"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[11px] text-slate-700 underline decoration-slate-800 underline-offset-2 transition-colors hover:text-slate-500"
+          >
+            Acesso administrativo
+          </a>
+        </p>
       </footer>
 
       {/* Aviso: checkout ainda não configurado */}
