@@ -38,8 +38,8 @@ interface AccessScreenProps {
   onBack: () => void
   /** Ativação validada com sucesso (identificador = e-mail ou código) */
   onActivated: (id: string) => void
-  /** Iniciar/continuar teste grátis */
-  onStartTrial: () => void
+  /** Iniciar/continuar teste grátis (e-mail opcional para vínculo do acesso) */
+  onStartTrial: (email?: string) => void
   /** Remove a licença deste aparelho */
   onSignOut: () => void
 }
@@ -51,6 +51,7 @@ export function AccessScreen({ license, onBack, onActivated, onStartTrial, onSig
   const [modo, setModo] = useState<Modo>('email')
   const [email, setEmail] = useState('')
   const [code, setCode] = useState('')
+  const [trialEmail, setTrialEmail] = useState('')
   const [checking, setChecking] = useState(false)
   const [error, setError] = useState('')
   const [serverCakto, setServerCakto] = useState<boolean | null>(null)
@@ -224,7 +225,7 @@ export function AccessScreen({ license, onBack, onActivated, onStartTrial, onSig
                       </p>
                     </div>
                     <Button
-                      onClick={onStartTrial}
+                      onClick={onStartTrial.bind(null, trialEmail.trim().toLowerCase() || undefined)}
                       className="shrink-0 bg-emerald-600 font-bold text-white hover:bg-emerald-700"
                     >
                       Entrar
@@ -409,11 +410,33 @@ export function AccessScreen({ license, onBack, onActivated, onStartTrial, onSig
                   </p>
                 </div>
                 <Button
-                  onClick={onStartTrial}
+                  onClick={() => onStartTrial(trialEmail.trim().toLowerCase() || undefined)}
                   className="w-full shrink-0 bg-amber-400 font-black text-slate-950 hover:bg-amber-300 sm:w-auto"
                 >
                   Testar grátis
                 </Button>
+              </CardContent>
+              <CardContent className="-mt-2 px-5 pb-5">
+                <div className="space-y-1.5">
+                  <Label htmlFor="trial-email" className="text-xs font-medium text-slate-500">
+                    Seu e-mail (opcional) — para recuperar seu acesso e receber dicas
+                  </Label>
+                  <Input
+                    id="trial-email"
+                    type="email"
+                    inputMode="email"
+                    autoComplete="email"
+                    placeholder="voce@email.com"
+                    value={trialEmail}
+                    onChange={(e) => setTrialEmail(e.target.value)}
+                    className="h-10"
+                  />
+                  {trialEmail.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trialEmail.trim()) && (
+                    <p className="text-[11px] text-amber-700">
+                      E-mail incompleto — você ainda pode testar, mas não poderemos recuperar seu acesso.
+                    </p>
+                  )}
+                </div>
               </CardContent>
             </Card>
           )}

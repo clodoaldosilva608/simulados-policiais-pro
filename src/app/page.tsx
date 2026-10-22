@@ -18,7 +18,7 @@ import {
   type OptionKey,
   type SimuladoPack,
 } from '@/data/simulado'
-import { useLicense } from '@/lib/license'
+import { useLicense, trackRegistry } from '@/lib/license'
 import {
   listLocalDocuments,
   getLocalDocument,
@@ -279,6 +279,28 @@ export default function Home() {
     [loadDocs]
   )
 
+  // Registro central (painel admin): heartbeat do estado da licença
+  useEffect(() => {
+    const lic = license.license
+    if (!lic) return
+    const beat = () =>
+      trackRegistry(
+        lic.status === 'active'
+          ? { status: 'active', ident: lic.code, activatedAt: lic.activatedAt }
+          : { status: 'trial', trialStartedAt: lic.trialStartedAt },
+      )
+    beat()
+    const iv = window.setInterval(beat, 5 * 60 * 1000)
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') beat()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      window.clearInterval(iv)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+  }, [license.license])
+
   // Splash enquanto carrega licença/estado
   if (!hydrated || license.status === 'loading') {
     return (
@@ -300,8 +322,8 @@ export default function Home() {
             license.activate(code)
             setPhase('library')
           }}
-          onStartTrial={() => {
-            license.startTrial()
+          onStartTrial={(email) => {
+            license.startTrial(email)
             setPhase('library')
           }}
           onSignOut={() => {

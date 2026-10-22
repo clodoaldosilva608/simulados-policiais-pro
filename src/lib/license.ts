@@ -22,6 +22,91 @@ export interface LicenseState {
 }
 
 const STORAGE_KEY = 'spp-license-v1'
+const UID_KEY = 'spp-uid-v1'
+
+/* ------------------------------------------------------------------ */
+/* Registro central (painel admin) — fire-and-forget, nunca bloqueia   */
+/* ------------------------------------------------------------------ */
+
+/** UUID estável do aparelho (não é dado pessoal; identifica a instalação) */
+export function deviceUid(): string {
+  try {
+    let uid = window.localStorage.getItem(UID_KEY)
+    if (!uid || !/^[a-zA-Z0-9_-]{8,64}$/.test(uid)) {
+      const rand =
+        typeof crypto !== 'undefined' && 'randomUUID' in crypto
+          ? crypto.randomUUID().replace(/-/g, '')
+          : Math.random().toString(36).slice(2) + Date.now().toString(36)
+      uid = `u${rand.slice(0, 31)}`
+      window.localStorage.setItem(UID_KEY, uid)
+    }
+    return uid
+  } catch {
+    return 'u' + Math.random().toString(36).slice(2, 14)
+  }
+}
+
+function deviceSummary(): { device: string; platform: string } {
+  try {
+    const ua = navigator.userAgent
+    const platform = /Android/i.test(ua)
+      ? 'Android'
+      : /iPhone|iPad|iPod/i.test(ua)
+        ? 'iOS'
+        : /Windows/i.test(ua)
+          ? 'Windows'
+          : /Macintosh/i.test(ua)
+            ? 'macOS'
+            : /Linux/i.test(ua)
+              ? 'Linux'
+              : 'Outro'
+    const browser = /Edg\//.test(ua)
+      ? 'Edge'
+      : /OPR\//.test(ua)
+        ? 'Opera'
+        : /Chrome\//.test(ua)
+          ? 'Chrome'
+          : /Safari\//.test(ua)
+            ? 'Safari'
+            : /Firefox\//.test(ua)
+              ? 'Firefox'
+              : 'Navegador'
+    return { device: browser, platform }
+  } catch {
+    return { device: 'Desconhecido', platform: 'Desconhecida' }
+  }
+}
+
+interface TrackPatch {
+  email?: string
+  name?: string
+  status?: 'trial' | 'active' | 'expired'
+  ident?: string
+  source?: 'trial' | 'cakto_email' | 'code'
+  trialStartedAt?: number
+  activatedAt?: number
+}
+
+/** Envia o estado da licença ao cadastro central (silencioso em caso de falha) */
+export function trackRegistry(patch: TrackPatch): void {
+  try {
+    const { device, platform } = deviceSummary()
+    void fetch('/api/registry/track', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        uid: deviceUid(),
+        ...patch,
+        email: patch.email?.trim().toLowerCase() || undefined,
+        device,
+        platform,
+      }),
+      keepalive: true,
+    }).catch(() => {})
+  } catch {
+    /* telemetria nunca deve quebrar o app */
+  }
+}
 
 function readStored(): LicenseState | null {
   if (typeof window === 'undefined') return null
@@ -68,7 +153,7 @@ export interface LicenseApi {
   allowed: boolean
   /** dias restantes do teste (null quando não está em teste) */
   daysLeft: number | null
-  startTrial: () => void
+  startTrial: (email?: string) => void
   activate: (code: string) => void
   signOut: () => void
 }
@@ -97,11 +182,17 @@ export function useLicense(): LicenseApi {
     }
   }, [])
 
-  const startTrial = useCallback(() => {
+  const startTrial = useCallback((email?: string) => {
     const next: LicenseState = { status: 'trial', trialStartedAt: Date.now() }
     persist(next)
     setLicense(next)
     setStatus('trial')
+    trackRegistry({
+      status: 'trial',
+      source: 'trial',
+      trialStartedAt: next.trialStartedAt,
+      email,
+    })
   }, [])
 
   const activate = useCallback((code: string) => {
@@ -109,6 +200,14 @@ export function useLicense(): LicenseApi {
     persist(next)
     setLicense(next)
     setStatus('active')
+    trackRegistry({
+      status: 'active',
+      ident: code,
+      activatedAt: next.activatedAt,
+      // identificador em formato de e-mail alimenta o vínculo com a Cakto
+      email: /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(code) ? code : undefined,
+      source: /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(code) ? 'cakto_email' : 'code',
+    })
   }, [])
 
   const signOut = useCallback(() => {
