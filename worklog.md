@@ -148,3 +148,24 @@ Stage Summary:
 - Painel admin acessível e confirmado em produção: https://simuladospoliciais.vercel.app/admin (login admin / SPP-Admin-2026!x9K7mQ2v)
 - Caminho de descoberta garantido: rodapé da landing agora tem link "Acesso administrativo"
 - Dono deve: usar a URL exata /admin; trocar a senha; revogar tokens expostos no chat
+
+---
+Task ID: 7
+Agent: main (Z.ai)
+Task: Conta obrigatória (e-mail+senha) para acessar o app — inclusive teste grátis — com vínculo de DISPOSITIVO ÚNICO por conta (anti-fraude/compartilhamento)
+
+Work Log:
+- src/lib/user-auth.ts (NOVO): contas no MESMO registro do painel (users/{id}.json) com authEmail/passwordHash (scrypt)/activeDevice; índice index/auth-emails.json (e-mail único, login O(1), fallback p/ legados); índice anti-fraude index/device-trials.json (1 teste grátis POR APARELHO); sessão HMAC {uid,dvc,exp} 30d em cookie httpOnly spp_user; validateUserSession aplica regra "1 aparelho por vez" (409/device quando outro aparelho assumiu); registerAccount ADOTA usuários legados (mesmo e-mail sem senha mantém trial/assinatura/histórico)
+- ROTAS NOVAS /api/auth: register (cria conta + inicia trial por padrão; 409 e-mail em uso; rate 10/15min), login (8/15min/IP; toma posse do vínculo; 403 banned/revoked), logout (libera aparelho), me (GET valida + heartbeat lastSeen; 401 auth/device, 403 banned/revoked), trial (exige sessão; recusa aparelho que já usou)
+- /api/license: ativação EXIGE conta autenticada e grava na CONTA (serverAction); banned/revoked NÃO ativam; SEM códigos configurados agora FALHA FECHADA (antes: modo demo aceitava qualquer SPP-XXXX com formato válido — buraco fechado)
+- /api/registry/track (legado): cliente não pode mais autodeclarar 'active' (só trial/expired, source trial) — KPIs do painel à prova de spoofing
+- ADMIN: excluir usuário também limpa índices (purgeAccountRefs libera e-mail + aparelho); detalhe do usuário mostra "Login da conta" e "Aparelho vinculado (único)"
+- APP: useSession (src/lib/session.ts) substitui useLicense no gate — status de acesso vem do SERVIDOR (não há mais licença local autoconcedida); heartbeat 5min/visibilidade detecta tomada de posse; access-screen REESCRITO (abas Criar conta | Entrar; view Minha conta com status/ativação/teste/sair; avisos de tomada de posse e bloqueio); landing CTAs viram "Criar conta e testar grátis"/"Entrar"; library header mostra conta
+- Deploy: 2 deploys CLI (f89672e, 8d37dfa) + push GitHub; env USER_SESSION_SECRET criada na Vercel (3 ambientes) + .env.local
+- E2E PRODUÇÃO (API): registro+trial OK; e-mail duplicado 409; senha errada 401; login device B derruba device A (401 reason device) e B segue ativo; nova conta no mesmo aparelho → trial.started:false reason aparelho; ativação sem sessão 401; com sessão + código sem cadastro → falha fechada; logout libera aparelho
+- E2E PRODUÇÃO (UI 390x844): landing → "Criar conta e testar 7 dias grátis" → cadastro → biblioteca com badge 7d; Minha conta mostra e-mail + "Teste grátis ativo — 7 dias restantes" + aviso de aparelho único; Sair deste aparelho → landing; 0 erros de console
+- Limpeza: contas de teste (spp.teste.a1, spp.teste.c3, spp.ui.test1) excluídas via painel; restam clodoaldo608@gmail.com (dono, legado — será adotada ao criar conta com esse e-mail) + 1 usuário legado por device
+
+Stage Summary:
+- ACESSO 100% POR CONTA: cadastro (e-mail+senha) obrigatório até para o teste grátis de 7 dias; sessão server-side com um dispositivo por vez; trial limitado por aparelho; ativação (Cakto/código) presa à conta; tudo visível no painel /admin (login, aparelho, status)
+- Pendências do dono: trocar senha do admin; revogar/rotacionar tokens expostos no chat
