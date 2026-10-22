@@ -53,3 +53,29 @@ Stage Summary:
 - App com 293 questões oficiais comentadas (PF 51 C/E, PC-CE 89 A-E, PM-RJ 48 A-E, PRF 91 C/E, Polícia Penal 14 C/E) + 60 do PC-PE + geração por PDF via IA
 - Texto-base das provas PF 2025 e PRF 2021 totalmente visível na resolução e na revisão
 - Modelos Certo/Errado e A-E preservados em todas as provas
+
+---
+Task ID: 3
+Agent: main (Z.ai)
+Task: Landing page + estrutura completa mobile + upload de PDF + banco local + assinatura Cakto R$17,90 + deploy (GitHub/Vercel)
+
+Work Log:
+- src/config/site.ts: marca "Simulados Policiais Pro", preço R$17,90/mês, link Cakto via NEXT_PUBLIC_CAKTO_CHECKOUT_URL, trial 7 dias
+- src/lib/license.ts: licença local (trial/active) em localStorage com hook useLicense (startTrial/activate/signOut)
+- src/lib/local-db.ts: BANCO LOCAL IndexedDB (documents + attempts) substituindo Prisma/SQLite — tudo no aparelho do usuário
+- APIs novas: /api/generate (IA: SDK Z.ai no preview + fallback OpenAI-compatível via AI_API_KEY p/ Vercel), /api/license (valida códigos vs ACCESS_CODES, fallback formato SPP-XXXX-XXXX-XXXX), /api/webhook/cakto (stub p/ automação)
+- Removidos: src/app/api/documents/** e src/lib/db.ts (Prisma) — projeto agora roda na Vercel sem backend de estado
+- src/components/landing/landing-page.tsx: landing mobile-first (hero, números reais 353+ questões/6 corporações, recursos, como funciona, pricing R$17,90, FAQ, CTA final) com fallback amigável quando checkout não configurado
+- src/components/simulado/access-screen.tsx: ativação de código + teste grátis + cartão de assinante com sair deste aparelho
+- upload-dialog.tsx reescrito: extração de texto do PDF NO CLIENTE (unpdf isomórfico), geração bloco a bloco via /api/generate com progresso, salvamento/resumo no IndexedDB
+- page.tsx: fases landing→access→library→welcome→exam→results→review; docs/attempts 100% locais; badge assinante/teste no header (visível no mobile)
+- PWA: manifest.webmanifest + ícones 192/512 (scripts/make-icons.ts com sharp) + metadata/viewport/apple-web-app
+- .env.example com todas as variáveis (Cakto, ACCESS_CODES, IA, webhook)
+- question-gen.ts dividido: helpers isomórficos no lib, chamadas IA na rota (fix Module not found fs/promises no cliente)
+- Lint limpo; e2e agent-browser: landing mobile/desktop, trial→biblioteca, PF item 1 com texto-base "Séries policiais" VISÍVEL (bug antigo OK), C/E com cronômetro, upload PDF→5 questões A-E salvas localmente, código inválido/valido, assinante ★, sair→landing, reload persiste licença
+- Deploy: GitHub repo privado clodoaldosilva608/simulados-policiais-pro (push OK) + Vercel produção https://simulados-policiais-pro.vercel.app (ssoProtection removida, público 200, título e render verificados)
+
+Stage Summary:
+- App completo: landing comercial + paywall (trial 7d + código Cakto) + 353 questões oficiais + PDF→simulado com IA + banco 100% local (IndexedDB) + PWA instalável
+- Produção: https://simulados-policiais-pro.vercel.app • Código: github.com/clodoaldosilva608/simulados-policiais-pro (privado)
+- Pendente do dono: criar produto na Cakto e definir NEXT_PUBLIC_CAKTO_CHECKOUT_URL; (opcional) ACCESS_CODES, AI_API_KEY
