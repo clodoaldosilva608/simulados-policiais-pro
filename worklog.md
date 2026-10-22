@@ -169,3 +169,23 @@ Work Log:
 Stage Summary:
 - ACESSO 100% POR CONTA: cadastro (e-mail+senha) obrigatório até para o teste grátis de 7 dias; sessão server-side com um dispositivo por vez; trial limitado por aparelho; ativação (Cakto/código) presa à conta; tudo visível no painel /admin (login, aparelho, status)
 - Pendências do dono: trocar senha do admin; revogar/rotacionar tokens expostos no chat
+
+---
+Task ID: 8
+Agent: main (Z.ai)
+Task: Dashboard do usuário com NOME + métricas de erros e acertos
+
+Work Log:
+- local-db.ts: LocalAttempt ganhou `title?` e `answered?`; novas listAllLocalAttempts() e hasAttemptWithId()
+- page.tsx: handleFinish agora grava tentativa para TODOS os simulados (antes só PDFs; provas oficiais não geravam histórico), com title/answered; migração migrateLegacyFinishedStates importa estados finalizados antigos do localStorage (ids determinísticos att-mig-{doc}-{finishedAt}); statsFromAttempts calcula acertos/erros/respondidas/aproveitamento com DEDUPE (±60s mesma prova = 1 contagem); displayNameOf deriva primeiro nome (nome cadastrado ou e-mail); recomputeStats após concluir/excluir
+- library-screen.tsx: painel "Meu desempenho" no topo da biblioteca — avatar com inicial, "Olá, {nome}", 4 cards (Acertos verde / Erros vermelho / Aproveitamento % / Simulados concluídos) + barra "Taxa de acerto geral"; estado vazio com instrução; tooltip do badge do header mostra nome • e-mail
+- BUG CORRIGIDO NO E2E: tentativa era contada 2x (gravação ao finalizar + migração do mesmo estado) — 6/4/60% em vez de 3/2/60%; corrigido comparando createdAt×finishedAt (±60s) na migração + dedupe defensivo em statsFromAttempts → revalidado: 1/4/20%
+- VALIDAÇÃO MATEMÁTICA: gabarito PF questões 1-5 = E,E,C,E,E; respostas C,C,E,C,E → 1 acerto/4 erros/20% — exato no painel
+- DESCOBERTA/BUG DE REPO: .gitignore tinha padrão `local-*` que OCULTAVA src/lib/local-db.ts do GitHub (repo incompleto) — corrigido para `/local-*` (root-anchored) e arquivo commitado
+- Deploys: 2 deploys CLI READY (3mchp20ur sem fix, 7ugbuurhp com fix) + pushes GitHub c7d6758, f81de05, 6607422
+- E2E produção 390x844: cadastro com nome → "Olá, E2E" + estado vazio; simulado PF concluído (5/51) → métricas exatas; login em novo aparelho assumiu a conta (regra dispositivo único funcionando); 0 erros de console; screenshots /tmp/e2e-dash-empty.png, /tmp/e2e-dash-metrics.png, /tmp/e2e-dash-final.png
+- Limpeza: conta de teste e2e.dashboard.t7 excluída via painel (restam só contas do dono)
+
+Stage Summary:
+- DASHBOARD DO ALUNO NO AR: nome + acertos + erros + aproveitamento + nº de simulados, atualizados a cada prova concluída (oficiais E de PDF), com migração automática do histórico anterior
+- Repositório GitHub agora completo (local-db.ts estava fora pelo gitignore)
