@@ -3,23 +3,28 @@ import { NextResponse, NextRequest } from 'next/server'
 export const runtime = 'nodejs'
 
 /**
- * Webhook da Cakto (opcional — automação futura).
+ * Webhook da Cakto — recebe eventos de compra/assinatura.
  *
- * A Cakto dispara eventos como subscription.created, subscription.renewed,
- * subscription.canceled etc. Nesta versão o app não mantém estado no servidor
- * (banco de dados é local no aparelho do cliente), então o webhook apenas
- * registra o evento em logs — útil para auditoria e para, no futuro, emitir
- * códigos de acesso automaticamente (ex.: gravar em um KV e expor em
- * /api/license).
+ * Configuração na Cakto:
+ *   URL: https://simuladospoliciais.vercel.app/api/webhook/cakto?secret=<CAKTO_WEBHOOK_SECRET>
  *
- * Configuração na Cakto: Integrações → Webhook → URL do app + /api/webhook/cakto
- * Segurança opcional: defina CAKTO_WEBHOOK_SECRET e a Cakto envia o header
- * "x-cakto-secret"; requests sem o segredo são rejeitados.
+ * Segurança: a Cakto pode entregar o segredo via query "secret" (padrão usado
+ * nas integrações da conta) e/ou header "x-cakto-secret". Aceitamos ambos.
+ * Sem CAKTO_WEBHOOK_SECRET definido no ambiente, o endpoint aceita os eventos
+ * (útil apenas para testes — defina o segredo antes de vender de verdade).
+ *
+ * O app não mantém estado no servidor (banco de dados é local no aparelho do
+ * cliente), então os eventos são registrados em logs para auditoria — e no
+ * futuro podem disparar automações (ex.: e-mails, códigos de acesso).
  */
 export async function POST(req: NextRequest) {
   const secret = process.env.CAKTO_WEBHOOK_SECRET
-  if (secret && req.headers.get('x-cakto-secret') !== secret) {
-    return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
+  if (secret) {
+    const urlSecret = req.nextUrl.searchParams.get('secret')
+    const headerSecret = req.headers.get('x-cakto-secret')
+    if (urlSecret !== secret && headerSecret !== secret) {
+      return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
+    }
   }
 
   try {
