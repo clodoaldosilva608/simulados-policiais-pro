@@ -224,3 +224,22 @@ Work Log:
 Stage Summary:
 - DASHBOARD COM MENU COMPLETO NO AR: ☰ no cabeçalho concentra assinatura (checkout Cakto), conta, novo simulado, desempenho, suporte e sair — inclusive para assinantes (bloco "Assinatura ativa")
 - Header mobile reorganizado: status de acesso agora vive no menu; título curto sem truncar
+
+---
+Task ID: 11
+Agent: main (Z.ai)
+Task: Corrigir Minha conta/Meu desempenho; cronômetro do teste grátis; Meu histórico no menu; tema claro/dark + tamanho de fonte; ☰ no canto direito
+
+Work Log:
+- BUG 1 (Minha conta sem dados): o efeito de fases em page.tsx forçava 'access' → 'library' sempre que session.access atualizava (heartbeat 5min/refresh) — EXPULSAVA o aluno da tela antes de ver os dados. Fix: efeito só resgata 'landing' → 'library'; volta do acesso é manual. TrialButton agora chama onDone ao iniciar teste. AccountView ganhou CARD DE DADOS: avatar + NOME + e-mail + badge de status (Assinante/Teste grátis/Sem acesso)
+- BUG 2 (Meu desempenho sem nada): item do menu só dava scrollIntoView no painel do topo. Criada PerformanceScreen (src/components/simulado/performance-screen.tsx) com abas Resumo | Histórico: Resumo = 4 cards + taxa geral + disciplinas + CTA assinar; Histórico = lista de provas concluídas (título, data/hora pt-BR, modo Prova/Estudo, duração, % colorido, acertos/respondidas). Fase nova 'desempenho' em page.tsx com perfTab; allAttempts carregado em recomputeStats/migração
+- CRONÔMETRO DO TESTE: accessOf (user-auth.ts) retorna trialEndsAt (ISO) → /api/auth/me; session.ts AccessInfo.trialEndsAt. TrialCountdown (trial-countdown.tsx): faixa fixa no header sticky da biblioteca + versão compacta na tela de desempenho — "Teste grátis termina em 6d 23h:59m:46s" atualizando a cada segundo, botão Assinar, fica VERMELHO pulsante nas últimas 24h e mostra "teste terminou" ao expirar
+- MENU ☰: movido para o CANTO SUPERIOR DIREITO (ordem: badge[desktop] · Novo · ☰); novos itens Meu desempenho (aba Resumo) e Meu histórico (aba Histórico); seção APARÊNCIA com Tema Claro/Escuro (Sun/Moon) e Fonte P/A/A+; rodapé com Sair deste aparelho
+- TEMA ESCURO: src/lib/appearance.ts (getTheme/setTheme/getFontSize/setFontSize + APPEARANCE_BOOTSTRAP injetado no <head> do layout ANTES da hidratação — sem flash); globals.css: html.dark redefine tokens shadcn (background/card/border/muted...) para slate + remapeia utilitários literais (~45 regras: bg-white→#1e293b, bg-slate-50→#0f172a, bordas, textos, hovers); text-slate-950 sobre âmbar PRESERVADO (contraste CTA); /admin não usa as classes remapeadas (intacto). Fonte: escala raiz 87.5%/100%/112.5% (rem → escala tudo)
+- FIX HISTÓRICO: % exibia correct/total (51) contra "1 de 5 respondidas" → agora calcula sobre as RESPONDIDAS (20%, mesma régua do painel)
+- Deploys CLI READY (dpl menu/aparência + fix %) + pushes GitHub 444c155, f8914a9
+- E2E PRODUÇÃO 390x844 (conta e2e.urgencia.t10): cadastro → cronômetro "6d 23h:59m:46s" contando ao vivo no topo + Assinar; ☰ no canto direito com TODOS os itens (Assinar, Minha conta, Meu desempenho, Meu histórico, Novo simulado, Suporte, Aparência, Sair); Minha conta MOSTRA OS DADOS (nome+e-mail+badge) sem rebater; prova PF 5/51 respondidas (C,C,E,C,E) → painel 1/4/20% exato; tela desempenho com dados; Histórico lista a prova (data, Prova, 2 min, 20%, 1 de 5); Escuro → html.dark aplicado, dashboard/menu escuros legíveis (screenshot); A+ → 112.5% na raiz; RELOAD mantém dark+A+ (bootstrap); Claro → volta light; Sair → landing; 0 erros de console; screenshots /tmp/e2e-t11-*.png
+- Limpeza: conta de teste excluída via admin (restam só as do dono)
+
+Stage Summary:
+- MINHA CONTA mostra dados e não expulsa mais; MEU DESEMPENHO virou tela completa (Resumo + HISTÓRICO de provas concluídas); CRONÔMETRO de urgência do teste grátis (dias/horas/min/seg) fixo no topo com botão Assinar; menu ☰ no canto direito com tema CLARO/DARK e tamanho de FONTE (P/A/A+) persistidos entre sessões
