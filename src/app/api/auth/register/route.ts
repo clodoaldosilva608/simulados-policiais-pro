@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { appendEvent, blobConfigured, getUser } from '@/lib/blob-registry'
+import { appendEvent, storageReady, getUser } from '@/lib/blob-registry'
 import {
   accessOf,
   clientIp,
@@ -22,7 +22,7 @@ const clean = (s: unknown, n: number) =>
  * O teste exige conta cadastrada — não existe acesso anônimo.
  */
 export async function POST(req: NextRequest) {
-  if (!blobConfigured()) {
+  if (!storageReady()) {
     return NextResponse.json(
       { ok: false, message: 'Armazenamento de contas não configurado neste ambiente.' },
       { status: 503 },

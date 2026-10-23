@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { appendEvent, blobConfigured, deleteUser } from '@/lib/blob-registry'
+import { appendEvent, storageReady, deleteUser } from '@/lib/blob-registry'
 import { clearUserCookieHeader, purgeEmailRef, rateLimit, validateUserSession } from '@/lib/user-auth'
 
 export const runtime = 'nodejs'
@@ -19,7 +19,7 @@ export const dynamic = 'force-dynamic'
  * (isso é feito na plataforma de pagamento Cakto).
  */
 export async function POST(req: NextRequest) {
-  if (!blobConfigured()) {
+  if (!storageReady()) {
     return NextResponse.json(
       { ok: false, message: 'Armazenamento de contas não configurado neste ambiente.' },
       { status: 503 },

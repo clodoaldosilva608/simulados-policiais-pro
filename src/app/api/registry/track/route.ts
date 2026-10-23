@@ -1,5 +1,5 @@
 import { NextResponse, NextRequest } from 'next/server'
-import { blobConfigured, upsertUser, type UserStatus } from '@/lib/blob-registry'
+import { storageReady, upsertUser, type UserStatus } from '@/lib/blob-registry'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -36,7 +36,7 @@ function rateLimited(ip: string): boolean {
 }
 
 export async function POST(req: NextRequest) {
-  if (!blobConfigured()) {
+  if (!storageReady()) {
     return NextResponse.json({ ok: true, stored: false })
   }
 

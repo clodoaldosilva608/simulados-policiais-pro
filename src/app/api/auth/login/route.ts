@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { appendEvent, blobConfigured } from '@/lib/blob-registry'
+import { appendEvent, storageReady } from '@/lib/blob-registry'
 import {
   accessOf,
   authenticate,
@@ -23,7 +23,7 @@ const clean = (s: unknown, n: number) =>
  * próximo heartbeat.
  */
 export async function POST(req: NextRequest) {
-  if (!blobConfigured()) {
+  if (!storageReady()) {
     return NextResponse.json(
       { ok: false, message: 'Armazenamento de contas não configurado neste ambiente.' },
       { status: 503 },

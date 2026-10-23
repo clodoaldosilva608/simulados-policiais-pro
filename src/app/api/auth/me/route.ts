@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { blobConfigured, upsertUser } from '@/lib/blob-registry'
+import { storageReady, upsertUser } from '@/lib/blob-registry'
 import { accessOf, validateUserSession } from '@/lib/user-auth'
 import { planLimitsFor } from '@/lib/content'
 
@@ -17,7 +17,7 @@ export const dynamic = 'force-dynamic'
  *  403 {reason:'banned'|'revoked'}
  */
 export async function GET(req: NextRequest) {
-  if (!blobConfigured()) {
+  if (!storageReady()) {
     return NextResponse.json({ ok: false, reason: 'auth' }, { status: 401 })
   }
 

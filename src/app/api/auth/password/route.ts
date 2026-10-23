@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { blobConfigured, upsertUser } from '@/lib/blob-registry'
+import { storageReady, upsertUser } from '@/lib/blob-registry'
 import { hashPassword, rateLimit, validateUserSession, verifyPassword } from '@/lib/user-auth'
 
 export const runtime = 'nodejs'
@@ -10,7 +10,7 @@ export const dynamic = 'force-dynamic'
  * Exige a senha atual (segurança) e a nova com no mínimo 6 caracteres.
  */
 export async function POST(req: NextRequest) {
-  if (!blobConfigured()) {
+  if (!storageReady()) {
     return NextResponse.json(
       { ok: false, message: 'Armazenamento de contas não configurado neste ambiente.' },
       { status: 503 },

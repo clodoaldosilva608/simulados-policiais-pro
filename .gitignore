@@ -63,3 +63,5 @@ scripts/*.pdf
 agent-ctx/
 tool-results/
 scripts/bank-out/
+.data-local/
+e2e-*.png

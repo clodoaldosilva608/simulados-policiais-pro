@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { validateUserSession } from '@/lib/user-auth'
 import { listQuestions, type BankQuestion } from '@/lib/content'
+import { BANK_SEED } from '@/data/bank-seed'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -13,6 +14,9 @@ export const dynamic = 'force-dynamic'
  *  • sample=N   → N questões aleatórias completas (para montar a prática)
  *  • padrão     → listagem paginada (preview do enunciado) + total
  *  • facets=1   → valores distintos dos filtros (selects da tela)
+ *
+ * RESILIÊNCIA: se o armazenamento (Vercel Blob) estiver indisponível/suspenso
+ * (banco vazio), serve o SEED estático somente-leitura (src/data/bank-seed.ts).
  */
 
 const MAX_LIMIT = 100
@@ -52,7 +56,12 @@ export async function GET(req: NextRequest) {
   const limit = Math.min(MAX_LIMIT, Math.max(1, Math.floor(Number(sp.get('limit')) || 20)))
   const offset = Math.max(0, Math.floor(Number(sp.get('offset')) || 0))
 
-  const all = (await listQuestions()).filter((x) => x.active)
+  let all = (await listQuestions()).filter((x) => x.active)
+  let source: 'store' | 'seed' = 'store'
+  if (all.length === 0 && BANK_SEED.length > 0) {
+    all = BANK_SEED.filter((x) => x.active)
+    source = 'seed'
+  }
 
   const filtered = all.filter((x) => {
     if (banca && x.banca.toLowerCase() !== banca) return false
@@ -85,7 +94,7 @@ export async function GET(req: NextRequest) {
       answer: x.answer,
       comment: x.comment,
     }))
-    return NextResponse.json({ ok: true, total: filtered.length, questions: picked })
+    return NextResponse.json({ ok: true, total: filtered.length, questions: picked, source })
   }
 
   const page = filtered.slice(offset, offset + limit)
@@ -105,5 +114,6 @@ export async function GET(req: NextRequest) {
     total: filtered.length,
     questions: page.map(previewOf),
     facets,
+    source,
   })
 }

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { appendEvent, blobConfigured, upsertUser } from '@/lib/blob-registry'
+import { appendEvent, storageReady, upsertUser } from '@/lib/blob-registry'
 import { validateUserSession } from '@/lib/user-auth'
 
 export const runtime = 'nodejs'
@@ -16,7 +16,7 @@ export const dynamic = 'force-dynamic'
  * único) e a chave de ativação Cakto — mudança só via suporte.
  */
 export async function POST(req: NextRequest) {
-  if (!blobConfigured()) {
+  if (!storageReady()) {
     return NextResponse.json(
       { ok: false, message: 'Armazenamento de contas não configurado neste ambiente.' },
       { status: 503 },

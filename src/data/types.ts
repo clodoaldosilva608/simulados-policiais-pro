@@ -13,6 +13,12 @@ export interface Question {
   options: QuestionOption[]
   answer: OptionKey
   comment: string
+  /** Metadados de origem (exibidos no estilo Qconcursos: [ano] [cargo] [banca]) */
+  banca?: string
+  ano?: number
+  concurso?: string
+  nivel?: string
+  assunto?: string
 }
 
 /** Formato de resposta do simulado */
@@ -42,6 +48,10 @@ export interface ExamState {
   current: number
   answers: Record<number, OptionKey>
   marked: number[]
+  /** Anotações livres por questão (ESPAÇO LIVRE, estilo Qconcursos) */
+  notes: Record<number, string>
+  /** Alternativas riscadas (RISCAR) por questão — id da questão → letras */
+  eliminated: Record<number, OptionKey[]>
 }
 
 export interface SubjectResult {

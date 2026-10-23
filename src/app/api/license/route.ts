@@ -1,5 +1,5 @@
 import { NextResponse, NextRequest } from 'next/server'
-import { appendEvent, blobConfigured, getAccessCodes, getUser, upsertUser } from '@/lib/blob-registry'
+import { appendEvent, storageReady, getAccessCodes, getUser, upsertUser } from '@/lib/blob-registry'
 import { checkCaktoSubscription, caktoConfigured } from '@/lib/cakto'
 import { accessOf, validateUserSession } from '@/lib/user-auth'
 
@@ -34,7 +34,7 @@ function envCodes(): string[] {
 async function allowedCodes(): Promise<string[]> {
   const env = envCodes()
   let extra: string[] = []
-  if (blobConfigured()) {
+  if (storageReady()) {
     try {
       extra = await getAccessCodes()
     } catch {
@@ -110,7 +110,7 @@ export async function POST(req: NextRequest) {
     }
     const result = await checkCaktoSubscription(rawEmail)
 
-    if (result.valid && blobConfigured()) {
+    if (result.valid && storageReady()) {
       try {
         await activateAccount(rawEmail, 'cakto_email')
       } catch {
@@ -139,7 +139,7 @@ export async function POST(req: NextRequest) {
 
   if (codes.length > 0) {
     if (codes.includes(code)) {
-      if (blobConfigured()) {
+      if (storageReady()) {
         try {
           await activateAccount(code, 'code')
         } catch {

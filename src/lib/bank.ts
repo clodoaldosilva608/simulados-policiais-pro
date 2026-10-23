@@ -103,6 +103,12 @@ export function bankToPack(questions: BankQuestionDto[], filtersUsed: BankFilter
     options: q.options.map((text, j) => ({ key: ('abcde'[j] ?? 'a') as OptionKey, html: text })),
     answer: ('abcde'[q.answer] ?? 'a') as OptionKey,
     comment: q.comment ?? '',
+    // metadados de origem para os badges estilo Qconcursos
+    banca: q.banca,
+    ano: q.ano,
+    concurso: q.concurso,
+    nivel: q.nivel,
+    assunto: q.assunto,
   }))
   const bancas = [...new Set(questions.map((q) => q.banca))]
   const label =

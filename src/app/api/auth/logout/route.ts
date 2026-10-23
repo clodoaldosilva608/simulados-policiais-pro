@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { blobConfigured, upsertUser } from '@/lib/blob-registry'
+import { storageReady, upsertUser } from '@/lib/blob-registry'
 import { clearUserCookieHeader, validateUserSession } from '@/lib/user-auth'
 
 export const runtime = 'nodejs'

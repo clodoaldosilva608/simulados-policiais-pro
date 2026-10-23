@@ -133,6 +133,8 @@ function freshState(name: string, mode: ExamMode): ExamState {
     current: 0,
     answers: {},
     marked: [],
+    notes: {},
+    eliminated: {},
   }
 }
 
@@ -242,6 +244,8 @@ function loadSaved(docId: string, maxIndex: number): ExamState | null {
       current: Math.min(Math.max(parsed.current ?? 0, 0), Math.max(0, maxIndex)),
       answers: parsed.answers ?? {},
       marked: Array.isArray(parsed.marked) ? parsed.marked : [],
+      notes: parsed.notes ?? {},
+      eliminated: parsed.eliminated ?? {},
     }
   } catch {
     return null
@@ -817,6 +821,17 @@ export default function Home() {
                 }
               : s
           )
+        }
+        onToggleEliminate={(qid, key) =>
+          setState((s) => {
+            if (!s) return s
+            const cur = s.eliminated?.[qid] ?? []
+            const next = cur.includes(key) ? cur.filter((k) => k !== key) : [...cur, key]
+            return { ...s, eliminated: { ...s.eliminated, [qid]: next } }
+          })
+        }
+        onSetNote={(qid, text) =>
+          setState((s) => (s ? { ...s, notes: { ...s.notes, [qid]: text } } : s))
         }
         onNavigate={(index) =>
           setState((s) => (s ? { ...s, current: Math.min(Math.max(index, 0), pack.questions.length - 1) } : s))

@@ -1,4 +1,6 @@
 import { put, get, list, del } from '@vercel/blob'
+import { readFile, writeFile, mkdir, readdir } from 'node:fs/promises'
+import { join } from 'node:path'
 
 /**
  * Registro central de usuários — armazenamento em Vercel Blob.
@@ -71,16 +73,81 @@ export function blobConfigured(): boolean {
   return Boolean(process.env.BLOB_READ_WRITE_TOKEN)
 }
 
+/**
+ * Armazenamento utilizável pelo registro: Blob (produção) OU fallback local
+ * em filesystem (dev/E2E sem token). As rotas de autenticação usam este
+ * sinal — nunca falham em ambiente local.
+ */
+export function storageReady(): boolean {
+  return blobConfigured() || true // fallback FS local sempre disponível no Node
+}
+
+/* ------------------------------------------------------------------ */
+/* MODO LOCAL (dev/E2E) — fallback em filesystem quando o Blob não     */
+/* está configurado (BLOB_READ_WRITE_TOKEN ausente). Em produção o     */
+/* token existe, então este caminho nunca é usado no deploy.           */
+/* ------------------------------------------------------------------ */
+const LOCAL_DIR = join(process.cwd(), '.data-local')
+
+function localPath(pathname: string): string {
+  return join(LOCAL_DIR, pathname.replace(/[^a-zA-Z0-9._-]/g, '__'))
+}
+
+async function readLocal<T>(pathname: string): Promise<T | null> {
+  try {
+    const text = await readFile(localPath(pathname), 'utf8')
+    return JSON.parse(text) as T
+  } catch {
+    return null
+  }
+}
+
+async function writeLocal(pathname: string, data: unknown): Promise<void> {
+  await mkdir(LOCAL_DIR, { recursive: true })
+  await writeFile(localPath(pathname), JSON.stringify(data), 'utf8')
+}
+
+/** Lista paths sob um prefixo (modo local). */
+async function listLocal(prefix: string, cap = 2000): Promise<string[]> {
+  try {
+    const entries = await readdir(LOCAL_DIR, { withFileTypes: true })
+    const mangledPrefix = prefix.replace(/[^a-zA-Z0-9._-]/g, '__')
+    return entries
+      .filter((e) => e.isFile())
+      .map((e) => e.name)
+      .filter((n) => n.startsWith(mangledPrefix))
+      .map((n) => n.replace(/__/g, '/'))
+      .slice(0, cap)
+  } catch {
+    return []
+  }
+}
+
 /* ------------------------------------------------------------------ */
 /* Primitivas JSON sobre o Blob                                        */
 /* ------------------------------------------------------------------ */
 
+/**
+ * CACHE EM MEMÓRIA (por instância lambda) — reduz drasticamente as leituras
+ * do Blob (cota de banda/operações). TTL curto de 45 s preserva a
+ * consistência entre instâncias com atraso mínimo.
+ */
+const jsonCache = new Map<string, { data: unknown; at: number }>()
+const JSON_CACHE_TTL_MS = 45_000
+
 export async function readJson<T>(pathname: string): Promise<T | null> {
+  if (!blobConfigured()) return readLocal<T>(pathname)
+  const hit = jsonCache.get(pathname)
+  if (hit && Date.now() - hit.at < JSON_CACHE_TTL_MS) {
+    return hit.data as T
+  }
   try {
     // SDK v2: get() retorna { stream, blob (metadados), headers }
     const { stream } = await get(pathname, { access: 'private', useCache: false })
     const text = await streamToText(stream)
-    return JSON.parse(text) as T
+    const data = JSON.parse(text) as T
+    jsonCache.set(pathname, { data, at: Date.now() })
+    return data
   } catch (err) {
     console.error('[blob-registry] readJson falhou:', pathname, err)
     return null
@@ -105,15 +172,19 @@ async function streamToText(stream: unknown): Promise<string> {
 }
 
 export async function writeJson(pathname: string, data: unknown): Promise<void> {
+  if (!blobConfigured()) return writeLocal(pathname, data)
   await put(pathname, JSON.stringify(data), {
     access: 'private',
     contentType: 'application/json',
     addRandomSuffix: false,
     allowOverwrite: true,
   })
+  // write-through: a própria instância já vê o dado novo (evita ler de volta)
+  jsonCache.set(pathname, { data, at: Date.now() })
 }
 
 async function listAll(prefix: string, cap = 2000): Promise<string[]> {
+  if (!blobConfigured()) return listLocal(prefix, cap)
   const paths: string[] = []
   let cursor: string | undefined
   try {
@@ -245,16 +316,20 @@ export async function appendEvent(
   const full: RegistryEvent = { id: crypto.randomUUID(), at: evt.at ?? Date.now(), ...evt }
   try {
     await writeJson(eventPath(full.id), full)
-    // poda simples: mantém apenas os MAX_EVENTS mais recentes
-    const paths = await listAll(PREFIX_EVENTS)
-    if (paths.length > MAX_EVENTS) {
-      const all = await Promise.all(paths.map((p) => readJson<RegistryEvent>(p)))
-      const sorted = all
-        .filter((e): e is RegistryEvent => Boolean(e && e.id))
-        .sort((a, b) => b.at - a.at)
-      const toDelete = sorted.slice(MAX_EVENTS)
-      if (toDelete.length > 0) {
-        await del(toDelete.map((e) => eventPath(e.id))).catch(() => {})
+    // poda simples: mantém apenas os MAX_EVENTS mais recentes.
+    // A poda roda em ~5% dos eventos (amostragem) — listAll em TODO evento
+    // queimava a cota de operações do Blob.
+    if (Math.random() < 0.05) {
+      const paths = await listAll(PREFIX_EVENTS)
+      if (paths.length > MAX_EVENTS) {
+        const all = await Promise.all(paths.map((p) => readJson<RegistryEvent>(p)))
+        const sorted = all
+          .filter((e): e is RegistryEvent => Boolean(e && e.id))
+          .sort((a, b) => b.at - a.at)
+        const toDelete = sorted.slice(MAX_EVENTS)
+        if (toDelete.length > 0) {
+          await del(toDelete.map((e) => eventPath(e.id))).catch(() => {})
+        }
       }
     }
   } catch {
