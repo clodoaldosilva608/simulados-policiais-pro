@@ -474,3 +474,24 @@ Stage Summary:
 - A plataforma tem agora um funil de monetização completo: 7 dias com tudo liberado → plano Grátis permanente e limitado (5 simulados/mês, 30 questões/dia, sem comentários) → assinatura R$17,90/mês ilimitada
 - Limites visíveis na landing (comparação de planos) e na dashboard (card do plano com uso em tempo real), com CTA de alta conversão em todos os pontos de bloqueio
 - Quota de geração reforçada no servidor (custo de IA protegido) e no cliente (offline); comentários são o diferencial premium em todas as telas de estudo
+
+---
+Task ID: 22
+Agent: main (Z.ai)
+Task: Alterar as credenciais da página admin para Login: clodoaldo608@gmail.com / Senha: Policial88677488
+
+Work Log:
+- Credenciais do painel admin vivem em env vars sensíveis da Vercel (ADMIN_USERNAME + ADMIN_PASSWORD_HASH formato "scrypt:<saltBase64url>:<keyBase64url>", verifyAdminCredentials em src/lib/admin-auth.ts) — nada de senha em código
+- Novo hash scrypt gerado via Node (salt aleatório 16 bytes, chave 32 bytes, base64url) com auto-verificação HASH_VALIDO; hash descartado de /tmp após uso
+- Upsert das env vars via API Vercel (POST /v10/projects/prj_FJzi584zmq8QjdBZcd5TA80G9Bin/env?upsert=true, type sensitive, target production+preview+development): ADMIN_USERNAME=clodoaldo608@gmail.com e ADMIN_PASSWORD_HASH=<novo hash> — ambas OK
+- UI da tela de login (/admin): campo "Usuário" virou "E-mail" (input type=email, placeholder admin@exemplo.com)
+- .vercel/project.json recriado (workspace tinha perdido): prj_FJzi584zmq8QjdBZcd5TA80G9Bin / team_iylYgr5VwMOCi7FtolZSwtcO / simuladospoliciais
+- Deploy produção: dpl simuladospoliciais-l8owyxp0w READY, prod HTTP 200
+- VERIFICAÇÃO EM PRODUÇÃO: login novo → HTTP 200 {"ok":true,"username":"clodoaldo608@gmail.com"}; credenciais antigas (admin / SPP-Admin-2026!x9K7mQ2v) → HTTP 401 rejeitadas; overview com sessão nova → HTTP 200 (adminAuth:true); E2E navegador 1280x800: campo "E-mail" visível, login via UI OK, painel carregado com 3 contas (Teste grátis 6d), sem erros
+- Modo 755 espúrio restaurado para 644 em 4 arquivos tocados pelo reset do workspace (delete-account, usage/simulado, comment-lock, plan.ts) — sem mudança de conteúdo
+- Push GitHub: b6a710a..89da92a (inclui commit pendente b2e646c da sessão anterior); cookie admin e hash de teste removidos de /tmp
+
+Stage Summary:
+- Painel /admin agora exige exclusivamente Login: clodoaldo608@gmail.com / Senha: Policial88677488 (hash scrypt em env var sensível; credenciais antigas invalidadas em produção)
+- Sessão admin segue 12h httpOnly assinada por HMAC; rate limit de 8 tentativas/15min por IP mantido
+- Pendência owner (inalterada): rotacionar tokens que vazaram no histórico git antigo (vcp_/ghp_/PAT)
