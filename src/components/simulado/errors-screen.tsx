@@ -29,6 +29,7 @@ import {
 } from '@/lib/local-db'
 import { HtmlContent } from './html-content'
 import { TextBlockCard } from './text-block-card'
+import { CommentLocked } from './comment-lock'
 
 type ErrorFilter = 'todas' | 'hoje' | 'agendadas' | 'dominadas'
 
@@ -44,9 +45,13 @@ function statusInfo(status: ReviewStatus, q: WrongQuestion): { label: string; cl
 
 interface ErrorsScreenProps {
   onBack: () => void
+  /** Plano grátis: comentários do professor bloqueados */
+  planFree?: boolean
+  /** Abre o pop-up de assinatura */
+  onUpgrade?: () => void
 }
 
-export function ErrorsScreen({ onBack }: ErrorsScreenProps) {
+export function ErrorsScreen({ onBack, planFree = false, onUpgrade }: ErrorsScreenProps) {
   const [items, setItems] = useState<WrongQuestion[] | null>(null)
   const [filter, setFilter] = useState<ErrorFilter>('todas')
   const [openId, setOpenId] = useState<string | null>(null)
@@ -322,12 +327,16 @@ export function ErrorsScreen({ onBack }: ErrorsScreenProps) {
                                   </>
                                 )}
                               </div>
-                              {item.comment && (
+                              {item.comment && (planFree ? (
+                                <div className="mt-2">
+                                  <CommentLocked onUpgrade={() => onUpgrade?.()} />
+                                </div>
+                              ) : (
                                 <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50 px-3.5 py-3">
                                   <p className="mb-1 text-[11px] font-bold uppercase tracking-wide text-slate-500">Comentário</p>
                                   <HtmlContent html={item.comment} className="text-sm" />
                                 </div>
-                              )}
+                              ))}
                               <div className="mt-2 text-center">
                                 <Button
                                   onClick={() => allowRetry(item.id)}

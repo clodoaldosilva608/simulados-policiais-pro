@@ -70,10 +70,12 @@ import {
   SheetTitle,
   SheetTrigger,
 } from '@/components/ui/sheet'
-import { SITE } from '@/config/site'
+import { SITE, FREE_PLAN } from '@/config/site'
 import { shareApp } from '@/lib/share'
 import { PROMO_COOLDOWN_DAYS, PROMO_KEYS, markPromoSession, markPromoShown, promoShownThisSession, shouldShowPromo } from '@/lib/promo'
 import type { RandomFormat } from '@/lib/random-simulado'
+import type { PlanInfo, UsageSnapshot } from '@/lib/plan'
+import { PlanUpsellDialog } from './promo-dialogs'
 import {
   OFFICIAL_PACKS,
   STATIC_PACK,
@@ -122,6 +124,10 @@ interface LibraryScreenProps {
   onUploadCompleted: () => void
   /** Estado da licença: assinante ou teste grátis (com fim exato do teste) */
   licenseBadge: { active: boolean; trialDaysLeft: number | null; trialEndsAt?: string | null }
+  /** Plano atual: premium (assinante/teste) ou grátis (expirado/cancelado) */
+  plan: PlanInfo
+  /** Uso corrente do plano grátis (null quando premium) */
+  usage: UsageSnapshot | null
   /** E-mail da conta autenticada (badge do cabeçalho) */
   accountEmail?: string
   /** Primeiro nome do aluno (saudação no painel) */
@@ -255,6 +261,130 @@ function MenuItem({
   )
 }
 
+/**
+ * Cartão do PLANO no topo do painel — para teste grátis e plano grátis.
+ * (Assinantes não precisam: o menu já mostra a assinatura ativa.)
+ * Mostra os limites com barras de uso e um CTA forte de assinatura.
+ */
+function PlanCard({
+  plan,
+  usage,
+  trialDaysLeft,
+}: {
+  plan: PlanInfo
+  usage: UsageSnapshot | null
+  trialDaysLeft: number | null
+}) {
+  if (plan.plan !== 'free') return null
+
+  return (
+    <section aria-label="Seu plano atual" className="mb-6">
+      <div className="overflow-hidden rounded-2xl border-2 border-amber-300 bg-white shadow-md">
+        {/* Cabeçalho do cartão */}
+        <div className="flex items-center gap-2 bg-slate-950 px-5 py-3.5 text-white">
+          <Crown className="h-4 w-4 shrink-0 text-amber-400" />
+          <p className="text-sm font-bold">Seu plano: Grátis</p>
+          <p className="ml-auto text-[11px] text-slate-400">depois do teste grátis de {SITE.trialDays} dias</p>
+        </div>
+
+        <div className="p-5">
+          {/* Barras de uso */}
+          {usage && (
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <div className="flex items-center justify-between text-xs font-semibold text-slate-600">
+                  <span>Simulados gerados este mês</span>
+                  <span className="tabular-nums">
+                    {usage.simuladosThisMonth}/{FREE_PLAN.simuladosPerMonth}
+                  </span>
+                </div>
+                <Progress
+                  value={(usage.simuladosThisMonth / FREE_PLAN.simuladosPerMonth) * 100}
+                  className="mt-1.5 h-2"
+                  aria-label={`Simulados gerados: ${usage.simuladosThisMonth} de ${FREE_PLAN.simuladosPerMonth}`}
+                />
+              </div>
+              <div>
+                <div className="flex items-center justify-between text-xs font-semibold text-slate-600">
+                  <span>Questões respondidas hoje</span>
+                  <span className="tabular-nums">
+                    {usage.answeredToday}/{FREE_PLAN.questionsPerDay}
+                  </span>
+                </div>
+                <Progress
+                  value={(usage.answeredToday / FREE_PLAN.questionsPerDay) * 100}
+                  className="mt-1.5 h-2"
+                  aria-label={`Questões hoje: ${usage.answeredToday} de ${FREE_PLAN.questionsPerDay}`}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Limites do plano grátis */}
+          <ul className="mt-4 space-y-1.5 text-sm text-slate-600">
+            <li className="flex items-start gap-2">
+              <XCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-400" />
+              <span>
+                Comentários dos professores nas questões: <b className="text-slate-800">bloqueados</b> no plano grátis
+              </span>
+            </li>
+            <li className="flex items-start gap-2">
+              <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+              <span>
+                Você ainda tem <b className="text-slate-800">{usage ? usage.simuladosLeft : FREE_PLAN.simuladosPerMonth} simulados</b> para gerar neste mês
+                (PDF ou aleatório)
+              </span>
+            </li>
+          </ul>
+
+          {/* CTA de assinatura — oferta com ancoragem de preço */}
+          <div className="mt-5 rounded-xl bg-gradient-to-br from-amber-400/15 to-amber-400/5 p-4 ring-1 ring-amber-300">
+            <p className="text-sm font-black text-slate-900">
+              Quem resolve MAIS questões todos os dias é quem passa. Libere o estudo completo:
+            </p>
+            <Button
+              onClick={() => window.open(SITE.checkoutUrl, '_blank', 'noopener,noreferrer')}
+              className="mt-3 h-12 w-full bg-amber-400 text-base font-black text-slate-950 shadow-lg shadow-amber-400/25 hover:bg-amber-300"
+            >
+              <Crown className="mr-2 h-5 w-5" /> Liberar TUDO — {SITE.price}{SITE.period}
+            </Button>
+            <p className="mt-2 text-center text-[11px] leading-relaxed text-slate-500">
+              Menos de <b>R$ 0,60 por dia</b> • questões e simulados ilimitados + comentários • Pix ou cartão via
+              Cakto • cancele quando quiser
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+/** Aviso para quem está NO teste grátis: o que acontece quando acabar */
+function TrialPlanNotice({ trialDaysLeft }: { trialDaysLeft: number | null }) {
+  return (
+    <section aria-label="Seu teste grátis" className="mb-6">
+      <div className="rounded-2xl border border-emerald-200 bg-emerald-50/70 p-5">
+        <div className="flex items-center gap-2">
+          <Sparkles className="h-4 w-4 shrink-0 text-emerald-600" />
+          <p className="text-sm font-bold text-emerald-900">
+            Teste grátis ativo{trialDaysLeft !== null ? ` — ${trialDaysLeft > 0 ? `${trialDaysLeft} dia${trialDaysLeft === 1 ? '' : 's'}` : 'menos de 1 dia'} restante${trialDaysLeft === 1 ? '' : 's'}` : ''}
+          </p>
+        </div>
+        <p className="mt-1.5 text-sm leading-relaxed text-emerald-900/80">
+          Tudo está liberado agora. Quando o teste acabar, você continua no <b>plano Grátis</b> (poucos simulados por
+          mês, cota diária de questões e sem comentários). Garanta a nota máxima da sua preparação:
+        </p>
+        <Button
+          onClick={() => window.open(SITE.checkoutUrl, '_blank', 'noopener,noreferrer')}
+          className="mt-3 h-11 w-full bg-slate-950 font-bold text-amber-300 hover:bg-slate-800 sm:w-auto sm:px-6"
+        >
+          <Crown className="mr-2 h-4 w-4" /> Assinar antes que acabe — {SITE.price}{SITE.period}
+        </Button>
+      </div>
+    </section>
+  )
+}
+
 function OfficialPackCard({
   pack,
   saved,
@@ -356,6 +486,8 @@ export function LibraryScreen({
   onDelete,
   onUploadCompleted,
   licenseBadge,
+  plan,
+  usage,
   accountEmail,
   accountName,
   accountPhoto,
@@ -374,6 +506,11 @@ export function LibraryScreen({
 }: LibraryScreenProps) {
   const [menuOpen, setMenuOpen] = useState(false)
   const [dialogOpen, setDialogOpen] = useState(false)
+  // Pop-up de upgrade quando o plano grátis bate no limite de geração
+  const [upsellOpen, setUpsellOpen] = useState(false)
+  const planFree = plan.plan === 'free'
+  const simuladosLeft = usage ? usage.simuladosLeft : null
+  const canGenerate = !planFree || (simuladosLeft ?? 0) > 0
   // Preferências de aparência: lidas no 1º render do cliente (o Sheet fechado
   // não renderiza nada no SSR, então não há risco de mismatch de hidratação)
   const [theme, setThemeState] = useState<ThemeMode>(() => getTheme())
@@ -414,6 +551,11 @@ export function LibraryScreen({
   }, [stats?.attempts])
 
   const handleRandom = () => {
+    if (!canGenerate) {
+      setRandomOpen(false)
+      setUpsellOpen(true)
+      return
+    }
     setRandomLoading(true)
     onRandomSimulado({ count: randomCount, format: randomFormat })
     // O loading real passa a valer na troca de tela; destrava por segurança
@@ -421,6 +563,11 @@ export function LibraryScreen({
   }
 
   const openNewUpload = () => {
+    // Plano grátis sem cota mensal: abre o pop-up de assinatura em vez do upload
+    if (!canGenerate) {
+      setUpsellOpen(true)
+      return
+    }
     setResumeDocId(null)
     setInitialFile(null)
     setDialogOpen(true)
@@ -510,8 +657,8 @@ export function LibraryScreen({
                 </>
               ) : (
                 <>
-                  <span className="sm:hidden">Teste</span>
-                  <span className="hidden sm:inline">Teste grátis</span>
+                  <span className="sm:hidden">Grátis</span>
+                  <span className="hidden sm:inline">Plano grátis</span>
                 </>
               )}
             </button>
@@ -574,7 +721,7 @@ export function LibraryScreen({
                       </>
                     ) : (
                       <>
-                        <Sparkles className="h-3.5 w-3.5" /> Teste grátis
+                        <Sparkles className="h-3.5 w-3.5" /> Plano grátis • limitado
                       </>
                     )}
                   </p>
@@ -803,6 +950,13 @@ export function LibraryScreen({
       </header>
 
       <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6">
+        {/* Cartão do plano — limites + CTA de assinatura (grátis) ou aviso do fim do teste */}
+        {planFree ? (
+          <PlanCard plan={plan} usage={usage} trialDaysLeft={licenseBadge.trialDaysLeft} />
+        ) : plan.trial ? (
+          <TrialPlanNotice trialDaysLeft={licenseBadge.trialDaysLeft} />
+        ) : null}
+
         {/* Painel do aluno — saudação + métricas de acertos/erros */}
         {accountName && (
           <section id="painel-desempenho" aria-label="Meu desempenho" className="mb-6 scroll-mt-20">
@@ -1247,7 +1401,13 @@ export function LibraryScreen({
         initialFile={initialFile}
         onCompleted={onUploadCompleted}
         onOpenAiSettings={onOpenAiSettings}
+        planFree={planFree}
+        simuladosLeft={simuladosLeft}
+        onUpgrade={() => setUpsellOpen(true)}
       />
+
+      {/* Pop-up de upgrade (plano grátis sem cota de geração) */}
+      <PlanUpsellDialog open={upsellOpen} onOpenChange={setUpsellOpen} reason="simulados" />
 
       {/* Dialog do simulado aleatório */}
       <Dialog open={randomOpen} onOpenChange={setRandomOpen}>
@@ -1309,8 +1469,13 @@ export function LibraryScreen({
               </div>
             </div>
             <p className="text-[11px] leading-relaxed text-slate-400">
-              O sorteio acontece no seu aparelho — nenhuma informação sai daqui. Cada prova nova tem questões e ordem
-              diferentes.
+              {planFree ? (
+                <>
+                  Plano grátis: restam <b>{simuladosLeft ?? FREE_PLAN.simuladosPerMonth} de {FREE_PLAN.simuladosPerMonth} simulados</b> neste mês — cada sorteio conta como 1. O sorteio acontece no seu aparelho.
+                </>
+              ) : (
+                'O sorteio acontece no seu aparelho — nenhuma informação sai daqui. Cada prova nova tem questões e ordem diferentes.'
+              )}
             </p>
           </div>
           <DialogFooter>

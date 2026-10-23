@@ -27,6 +27,21 @@ export const SITE = {
   supportEmail: 'suportesimuladospoliciais@gmail.com',
 } as const
 
+/**
+ * PLANO GRÁTIS (após o teste grátis de 7 dias) — o aluno continua usando o
+ * app com limites que evidenciam o valor da assinatura:
+ * • Poucos simulados gerados por mês (PDF→simulado e aleatório somados)
+ * • Cota diária de questões
+ * • Sem comentários de professor nas questões (exclusivo do assinante)
+ * Usados tanto no cliente (UI/quota) quanto no servidor (/api/usage/simulado).
+ */
+export const FREE_PLAN = {
+  /** Novos simulados gerados por mês (upload de PDF + simulado aleatório) */
+  simuladosPerMonth: 5,
+  /** Questões que o aluno pode responder por dia (1ª resposta de cada questão conta) */
+  questionsPerDay: 30,
+} as const
+
 /** true quando o link de pagamento da Cakto já foi configurado */
 export function checkoutConfigured(): boolean {
   return typeof SITE.checkoutUrl === 'string' && SITE.checkoutUrl.startsWith('http')

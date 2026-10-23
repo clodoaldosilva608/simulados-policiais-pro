@@ -8,6 +8,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock,
+  Crown,
   Flag,
   GraduationCap,
   Lightbulb,
@@ -38,6 +39,7 @@ import {
 } from '@/components/ui/sheet'
 import { HtmlContent } from './html-content'
 import { TextBlockCard } from './text-block-card'
+import { CommentLocked } from './comment-lock'
 import {
   formatDuration,
   answerLabel,
@@ -52,13 +54,32 @@ import {
 interface ExamScreenProps {
   pack: SimuladoPack
   state: ExamState
+  /** Plano grátis: comentários bloqueados + cota diária de questões */
+  planFree?: boolean
+  /** Questões que ainda podem ser respondidas hoje (null = ilimitado) */
+  questionsLeft?: number | null
+  /** Abre o pop-up de assinatura quando a COTA DIÁRIA bloqueia uma resposta */
+  onUpgrade?: () => void
+  /** Abre o pop-up de assinatura ao clicar no comentário bloqueado (motivo = comentários) */
+  onCommentsUpgrade?: () => void
   onAnswer: (qid: number, key: OptionKey) => void
   onToggleMark: (qid: number) => void
   onNavigate: (index: number) => void
   onFinish: () => void
 }
 
-export function ExamScreen({ pack, state, onAnswer, onToggleMark, onNavigate, onFinish }: ExamScreenProps) {
+export function ExamScreen({
+  pack,
+  state,
+  planFree = false,
+  questionsLeft = null,
+  onUpgrade,
+  onCommentsUpgrade,
+  onAnswer,
+  onToggleMark,
+  onNavigate,
+  onFinish,
+}: ExamScreenProps) {
   const [now, setNow] = useState(() => Date.now())
   const [navOpen, setNavOpen] = useState(false)
   const autoFired = useRef(false)
@@ -101,8 +122,15 @@ export function ExamScreen({ pack, state, onAnswer, onToggleMark, onNavigate, on
 
   const locked = state.mode === 'estudo' && isAnswered
 
+  // Plano grátis: cota diária esgotada → bloqueia novas respostas e oferece a assinatura
+  const quotaReached = planFree && questionsLeft !== null && questionsLeft <= 0
+
   const handleAnswer = (key: OptionKey) => {
     if (locked) return
+    if (quotaReached) {
+      onUpgrade?.()
+      return
+    }
     onAnswer(question.id, key)
   }
 
@@ -174,6 +202,19 @@ export function ExamScreen({ pack, state, onAnswer, onToggleMark, onNavigate, on
             <ListChecks className="h-4 w-4 text-amber-300" />
             <span className="font-semibold text-white">{answeredCount}</span>/{QUESTIONS.length} respondidas
           </div>
+
+          {/* Plano grátis: contador da cota diária de questões */}
+          {planFree && questionsLeft !== null && (
+            <div
+              className={`hidden items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-bold sm:flex ${
+                quotaReached ? 'animate-pulse bg-red-500/20 text-red-300' : 'bg-amber-400/15 text-amber-300'
+              }`}
+              title="Plano grátis: cota diária de questões"
+            >
+              <Crown className="h-3.5 w-3.5" />
+              {quotaReached ? 'limite de hoje atingido' : `restam ${questionsLeft} hoje`}
+            </div>
+          )}
 
           <AlertDialog>
             <AlertDialogTrigger asChild>
@@ -395,11 +436,17 @@ export function ExamScreen({ pack, state, onAnswer, onToggleMark, onNavigate, on
                           <XCircle className="h-5 w-5" /> Resposta incorreta — gabarito: {answerLabel(question)}.
                         </div>
                       )}
-                      <div className="mt-3 rounded-lg border-l-4 border-amber-400 bg-amber-50/70 px-4 py-3">
-                        <p className="mb-2 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-amber-700">
-                          <Lightbulb className="h-4 w-4" /> Comentário
-                        </p>
-                        <HtmlContent html={question.comment} className="text-sm" />
+                      <div className="mt-3">
+                        {planFree ? (
+                          <CommentLocked onUpgrade={() => (onCommentsUpgrade ?? onUpgrade)?.()} />
+                        ) : (
+                          <div className="rounded-lg border-l-4 border-amber-400 bg-amber-50/70 px-4 py-3">
+                            <p className="mb-2 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-amber-700">
+                              <Lightbulb className="h-4 w-4" /> Comentário
+                            </p>
+                            <HtmlContent html={question.comment} className="text-sm" />
+                          </div>
+                        )}
                       </div>
                     </motion.div>
                   )}

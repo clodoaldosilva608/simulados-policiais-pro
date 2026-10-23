@@ -44,6 +44,8 @@ export interface RegistryUser {
   activeDevice?: string
   /** quando o vínculo de aparelho foi definido */
   activeDeviceAt?: number
+  /** timestamps (ms) dos simulados gerados no MÊS corrente — cota do plano grátis (podada na escrita) */
+  genLog?: number[]
   createdAt: number
   updatedAt: number
   lastSeen: number

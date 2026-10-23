@@ -33,6 +33,7 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
 import { formatDurationLabel, packFormatLabel, type ExamMode, type SimuladoPack } from '@/data/simulado'
+import { Crown, Lock } from 'lucide-react'
 
 export interface AttemptInfo {
   name: string
@@ -51,6 +52,14 @@ interface WelcomeScreenProps {
   hasSaved: boolean
   savedFinished: boolean
   attempts: AttemptInfo[]
+  /** Plano grátis: aviso de cota diária + comentários bloqueados */
+  planFree?: boolean
+  /** Questões que ainda podem ser respondidas hoje (null = ilimitado) */
+  questionsLeft?: number | null
+  /** Simulados que ainda podem ser gerados neste mês (informativo) */
+  simuladosLeft?: number | null
+  /** Abre o pop-up de assinatura */
+  onUpgrade?: () => void
   onStart: (name: string, mode: ExamMode) => void
   onContinue: () => void
   onViewResults: () => void
@@ -65,6 +74,10 @@ export function WelcomeScreen({
   hasSaved,
   savedFinished,
   attempts,
+  planFree = false,
+  questionsLeft = null,
+  simuladosLeft = null,
+  onUpgrade,
   onStart,
   onContinue,
   onViewResults,
@@ -134,6 +147,41 @@ export function WelcomeScreen({
               </div>
             </CardContent>
           </Card>
+
+          {/* Aviso do plano grátis: cota de hoje + comentários bloqueados */}
+          {planFree && questionsLeft !== null && (
+            <div className="mt-6 rounded-2xl border border-amber-300 bg-amber-50 p-5">
+              <div className="flex items-center gap-2">
+                <Crown className="h-4 w-4 shrink-0 text-amber-600" />
+                <p className="text-sm font-bold text-amber-900">
+                  {questionsLeft <= 0
+                    ? 'Plano grátis: sua cota de questões de hoje já acabou'
+                    : `Plano grátis: você pode responder ${questionsLeft} ${questionsLeft === 1 ? 'questão' : 'questões'} hoje`}
+                </p>
+              </div>
+              <p className="mt-1.5 text-sm leading-relaxed text-amber-900/80">
+                {questionsLeft > 0 && total > questionsLeft
+                  ? `Este simulado tem ${total} questões — hoje o seu limite permite responder ${questionsLeft}. `
+                  : ''}
+                {simuladosLeft !== null && simuladosLeft <= 2
+                  ? `Restam apenas ${simuladosLeft} simulados para gerar neste mês. `
+                  : ''}
+                No plano <b>Assinante</b> você resolve questões SEM LIMITE e ainda vê o comentário do professor em
+                cada uma — é a diferença entre treinar e aprender de verdade.
+              </p>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <Button
+                  onClick={() => onUpgrade?.()}
+                  className="h-10 bg-slate-950 font-bold text-amber-300 hover:bg-slate-800"
+                >
+                  <Crown className="mr-1.5 h-4 w-4" /> Liberar tudo — R$ 17,90/mês
+                </Button>
+                <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-amber-800">
+                  <Lock className="h-3 w-3" /> comentários bloqueados no plano grátis
+                </span>
+              </div>
+            </div>
+          )}
 
           {/* Instruções */}
           <Card className="mt-6">

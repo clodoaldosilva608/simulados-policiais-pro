@@ -5,6 +5,7 @@ import { motion } from 'framer-motion'
 import {
   BadgeCheck,
   BookOpenCheck,
+  CheckCircle2,
   CheckCheck,
   ChevronRight,
   FileText,
@@ -96,6 +97,10 @@ const FEATURES = [
 ]
 
 const FAQ = [
+  {
+    q: 'O que acontece quando o teste grátis de 7 dias termina?',
+    a: 'Você continua usando o app no PLANO GRÁTIS, para sempre e sem pagar nada: até 5 simulados gerados por mês, até 30 questões por dia e sem os comentários de professor. Se quiser estudar sem limites — simulados ilimitados, questões sem cota diária e comentário em todas as questões — basta assinar o plano Assinante por R$ 17,90/mês (menos de R$ 0,60 por dia).',
+  },
   {
     q: 'Como funciona a assinatura de R$ 17,90/mês?',
     a: 'A cobrança recorrente é gerenciada 100% pela Cakto, plataforma segura de pagamentos. Você pode pagar com Pix, Pix Automático (débito automático) ou cartão de crédito e cancelar quando quiser, direto no seu e-mail de compra — sem multa e sem burocracia.',
@@ -370,30 +375,80 @@ export function LandingPage({ onEnterAccess, onStartTrial }: LandingPageProps) {
           </div>
         </section>
 
-        {/* PREÇO */}
+        {/* PLANOS — comparação Grátis x Assinante (o teste vira plano gratuito) */}
         <section id="preco" className="mx-auto max-w-6xl px-4 py-12 sm:py-16">
-          <div className="mx-auto max-w-md">
-            <Card className="overflow-hidden border-2 border-amber-400 shadow-xl shadow-amber-100">
-              <div className="bg-slate-950 px-6 py-4 text-center">
-                <p className="text-sm font-bold uppercase tracking-wide text-amber-300">Plano Assinante</p>
+          <h2 className="text-center text-2xl font-black tracking-tight text-slate-900 sm:text-3xl">
+            Comece grátis. Assine quando <span className="text-amber-500">sentir a diferença</span>
+          </h2>
+          <p className="mx-auto mt-2 max-w-xl text-center text-sm leading-relaxed text-slate-500">
+            Você testa {SITE.trialDays} dias com TUDO liberado. Depois, continua no plano Grátis — ou assina para não
+            colocar limite na sua aprovação.
+          </p>
+
+          <div className="mx-auto mt-10 grid max-w-4xl items-start gap-5 lg:grid-cols-2">
+            {/* PLANO GRÁTIS */}
+            <Card className="h-full border-slate-200">
+              <div className="border-b border-slate-100 px-6 py-4">
+                <p className="text-sm font-bold uppercase tracking-wide text-slate-500">Plano Grátis</p>
+                <p className="mt-1 text-3xl font-black tracking-tight text-slate-900">R$ 0</p>
+                <p className="text-xs text-slate-400">para sempre, mesmo depois do teste</p>
               </div>
               <CardContent className="p-6">
-                <div className="flex items-end justify-center gap-1">
-                  <span className="text-4xl font-black tracking-tight text-slate-900 sm:text-5xl">{SITE.price}</span>
-                  <span className="pb-1.5 text-sm font-semibold text-slate-400">{SITE.period}</span>
-                </div>
-                <p className="mt-1 text-center text-xs text-slate-500">
-                  Recorrência mensal gerenciada pela Cakto • cancele quando quiser
-                </p>
-
-                <ul className="mt-5 space-y-2.5 text-sm text-slate-700">
+                <ul className="space-y-2.5 text-sm text-slate-700">
                   {[
-                    `Todas as provas oficiais (${stats.totalQuestions}+ questões com gabarito)`,
-                    'Modelos Certo/Errado e A, B, C, D, E em todas as provas',
-                    'PDFs ilimitados viram simulados com IA',
-                    'Modo prova com cronômetro + modo estudo comentado',
-                    'Desempenho por disciplina e histórico de tentativas',
-                    `Teste grátis por ${SITE.trialDays} dias antes de assinar`,
+                    `${SITE.trialDays} dias de teste com TUDO liberado (sem cartão)`,
+                    'Depois: até 5 simulados gerados por mês (PDF ou aleatório)',
+                    'Até 30 questões por dia',
+                    'Todas as provas oficiais para explorar',
+                    'Desempenho básico e histórico de tentativas',
+                  ].map((item) => (
+                    <li key={item} className="flex items-start gap-2.5">
+                      <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+                      <span className="leading-snug">{item}</span>
+                    </li>
+                  ))}
+                  {[
+                    'Sem comentários de professor nas questões',
+                    'Limites diários e mensais',
+                  ].map((item) => (
+                    <li key={item} className="flex items-start gap-2.5 text-slate-400">
+                      <X className="mt-0.5 h-4 w-4 shrink-0 text-red-300" />
+                      <span className="leading-snug">{item}</span>
+                    </li>
+                  ))}
+                </ul>
+                <Button
+                  onClick={onStartTrial}
+                  variant="outline"
+                  className="mt-6 h-12 w-full border-slate-300 font-bold text-slate-700 hover:bg-slate-50"
+                >
+                  <PlayCircle className="mr-2 h-5 w-5" /> Criar conta grátis
+                </Button>
+              </CardContent>
+            </Card>
+
+            {/* PLANO ASSINANTE — destaque */}
+            <Card className="relative h-full border-2 border-amber-400 shadow-xl shadow-amber-100">
+              <span className="absolute -top-3.5 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-slate-950 px-4 py-1.5 text-[11px] font-black uppercase tracking-wide text-amber-300 shadow-lg">
+                ★ Mais escolhido
+              </span>
+              <div className="border-b border-amber-100 bg-slate-950 px-6 py-4 text-white">
+                <p className="text-sm font-bold uppercase tracking-wide text-amber-300">Assinante Pro</p>
+                <div className="mt-1 flex items-end gap-1">
+                  <p className="text-3xl font-black tracking-tight">{SITE.price}</p>
+                  <p className="pb-1 text-sm font-semibold text-slate-400">{SITE.period}</p>
+                </div>
+                <p className="text-xs text-slate-400">menos de R$ 0,60 por dia • cancele quando quiser</p>
+              </div>
+              <CardContent className="p-6">
+                <ul className="space-y-2.5 text-sm text-slate-700">
+                  {[
+                    `Tudo do plano grátis, SEM limites — e as ${stats.totalQuestions}+ questões oficiais`,
+                    'Simulados de PDF e aleatórios ILIMITADOS, para sempre',
+                    'Questões SEM limite diário — estude o quanto aguentar',
+                    'COMENTÁRIO DE PROFESSOR em todas as questões (o segredo para não repetir o erro)',
+                    'Caderno de erros com revisão 3/7/15 dias até dominar',
+                    'Estatísticas completas por disciplina + novas provas assim que saem',
                   ].map((item) => (
                     <li key={item} className="flex items-start gap-2.5">
                       <BookOpenCheck className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
@@ -401,27 +456,22 @@ export function LandingPage({ onEnterAccess, onStartTrial }: LandingPageProps) {
                     </li>
                   ))}
                 </ul>
-
                 <Button
                   onClick={handleSubscribe}
-                  className="mt-6 h-12 w-full bg-amber-400 text-base font-black text-slate-950 hover:bg-amber-300"
+                  className="mt-6 h-12 w-full bg-amber-400 text-base font-black text-slate-950 shadow-lg shadow-amber-400/25 hover:bg-amber-300"
                 >
                   Assinar agora — {SITE.price}{SITE.period}
                 </Button>
-                <Button
-                  onClick={onStartTrial}
-                  variant="outline"
-                  className="mt-2 h-11 w-full border-slate-300 font-bold text-slate-700 hover:bg-slate-50"
-                >
-                  Prefiro criar conta e testar {SITE.trialDays} dias grátis
-                </Button>
-                <p className="mt-3 text-center text-[11px] leading-relaxed text-slate-400">
-                  Pagamento processado pela Cakto (Pix, Pix Automático ou cartão). Depois de pagar, ative com o
-                  e-mail da compra em “Já sou assinante” — liberação na hora.
+                <p className="mt-2 text-center text-[11px] leading-relaxed text-slate-400">
+                  Pix, Pix Automático ou cartão via Cakto • ativação na hora • sem multa por cancelamento
                 </p>
               </CardContent>
             </Card>
           </div>
+
+          <p className="mx-auto mt-8 max-w-2xl text-center text-sm font-semibold text-slate-600">
+            Quem resolve mais questões todos os dias passa antes. Simples assim — não limite a sua preparação.
+          </p>
         </section>
 
         {/* FAQ */}

@@ -8,6 +8,7 @@ import {
   Crown,
   FileText,
   Link2,
+  Lock,
   MessageCircle,
   Send,
   Share2,
@@ -103,6 +104,117 @@ export function SubscriberPromoDialog({
               className="mt-1 h-9 w-full text-xs font-semibold text-slate-400 hover:bg-slate-100 hover:text-slate-600"
             >
               Continuar estudando no teste grátis
+            </Button>
+          </div>
+        </motion.div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/* --------------------------------------------------------------------- */
+/*  POP-UP DE UPGRADE (plano grátis atingiu um limite) — CTA convincente  */
+/* --------------------------------------------------------------------- */
+
+export type UpsellReason = 'questions' | 'simulados' | 'comments'
+
+const UPSELL_COPY: Record<UpsellReason, { title: string; description: string }> = {
+  questions: {
+    title: 'Limite de hoje atingido!',
+    description:
+      'Você respondeu as questões do plano grátis de hoje. Mas quem quer a vaga NÃO pode esperar até amanhã — assinantes resolvem questões sem limite, todos os dias, até o dia da prova.',
+  },
+  simulados: {
+    title: 'Seus simulados do mês acabaram',
+    description:
+      'No plano grátis você gera poucos simulados por mês. Como assinante, você transforma TODOS os PDFs que quiser em simulado e sorteia provas ilimitadas — do edital inteiro, se precisar.',
+  },
+  comments: {
+    title: 'Comentário exclusivo dos assinantes',
+    description:
+      'Entender POR QUE a resposta está certa é o que faz a nota subir de verdade. Os comentários de professor em cada questão são o coração do plano Assinante — e é exatamente o que o plano grátis não tem.',
+  },
+}
+
+const UPSELL_BENEFITS = [
+  'Simulados de PDF e aleatórios ILIMITADOS',
+  'Questões SEM limite diário — estude o quanto quiser',
+  'Comentário de professor em TODAS as questões',
+  'Caderno de erros com revisão 3/7/15 dias + estatísticas completas',
+]
+
+export function PlanUpsellDialog({
+  open,
+  onOpenChange,
+  reason,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  reason: UpsellReason
+}) {
+  const copy = UPSELL_COPY[reason] ?? UPSELL_COPY.comments
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="overflow-hidden p-0 sm:max-w-md">
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.2 }}>
+          {/* Cabeçalho escuro com selo */}
+          <div className="relative bg-slate-950 px-6 pb-5 pt-6 text-center text-white">
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-400 shadow-lg shadow-amber-400/30">
+              {reason === 'comments' ? (
+                <Lock className="h-7 w-7 text-slate-950" />
+              ) : (
+                <Crown className="h-7 w-7 text-slate-950" />
+              )}
+            </div>
+            <DialogHeader className="mt-3 space-y-1.5 text-center">
+              <DialogTitle className="text-xl font-black leading-tight text-white">{copy.title}</DialogTitle>
+              <DialogDescription className="mx-auto max-w-sm text-sm leading-relaxed text-slate-300">
+                {copy.description}
+              </DialogDescription>
+            </DialogHeader>
+          </div>
+
+          <div className="px-6 py-5">
+            <ul className="space-y-2.5 text-sm text-slate-700">
+              {UPSELL_BENEFITS.map((text) => (
+                <li key={text} className="flex items-start gap-2.5">
+                  <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-100">
+                    <CheckCheck className="h-3 w-3 text-emerald-700" />
+                  </span>
+                  <span className="leading-snug">{text}</span>
+                </li>
+              ))}
+            </ul>
+
+            {/* Ancoragem de preço + empatia */}
+            <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+              <p className="text-center text-sm font-black text-amber-900">
+                Tudo isso por {SITE.price}{SITE.period} — <b>menos de R$ 0,60 por dia</b>
+              </p>
+              <p className="mt-1 text-center text-xs leading-relaxed text-amber-800">
+                Menos que um lanche por semana para estudar com o material completo. Aprovação não é cara — é
+                consistente.
+              </p>
+            </div>
+
+            <Button
+              onClick={() => {
+                onOpenChange(false)
+                window.open(SITE.checkoutUrl, '_blank', 'noopener,noreferrer')
+              }}
+              className="mt-4 h-[52px] w-full bg-amber-400 text-base font-black text-slate-950 shadow-lg shadow-amber-400/30 hover:bg-amber-300"
+            >
+              <Crown className="mr-2 h-5 w-5" /> Liberar tudo agora — {SITE.price}{SITE.period}
+            </Button>
+            <p className="mt-2 text-center text-[11px] leading-relaxed text-slate-400">
+              Pix, Pix Automático ou cartão via Cakto • ativação na hora • cancele quando quiser, sem multa
+            </p>
+            <Button
+              variant="ghost"
+              onClick={() => onOpenChange(false)}
+              className="mt-1 h-9 w-full text-xs font-semibold text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+            >
+              Continuar no plano grátis
             </Button>
           </div>
         </motion.div>

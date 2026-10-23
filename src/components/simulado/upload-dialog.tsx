@@ -35,6 +35,8 @@ import {
 } from '@/lib/local-db'
 import { questionsPerChunk, type GeneratedQuestion } from '@/lib/question-gen'
 import { getAiSettings, type AiSettings } from '@/lib/ai-settings'
+import { recordSimuladoGenerated } from '@/lib/plan'
+import { FREE_PLAN } from '@/config/site'
 import type { Question, TextBlock } from '@/data/types'
 
 interface UploadDialogProps {
@@ -47,13 +49,29 @@ interface UploadDialogProps {
   onCompleted: () => void
   /** Abre a aba Configurações da IA (colar/criar a chave) */
   onOpenAiSettings?: () => void
+  /** Plano grátis: cota mensal de geração + reforço de assinatura */
+  planFree?: boolean
+  /** Simulados que ainda podem ser gerados neste mês (null = ilimitado) */
+  simuladosLeft?: number | null
+  /** Abre o pop-up de assinatura (cota mensal esgotada) */
+  onUpgrade?: () => void
 }
 
 type Step = 'form' | 'extracting' | 'ocr' | 'generating' | 'done' | 'error'
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024 // 50 MB
 
-export function UploadDialog({ open, onOpenChange, resumeDocId, initialFile, onCompleted, onOpenAiSettings }: UploadDialogProps) {
+export function UploadDialog({
+  open,
+  onOpenChange,
+  resumeDocId,
+  initialFile,
+  onCompleted,
+  onOpenAiSettings,
+  planFree = false,
+  simuladosLeft = null,
+  onUpgrade,
+}: UploadDialogProps) {
   const { toast } = useToast()
 
   const [step, setStep] = useState<Step>('form')
@@ -357,6 +375,35 @@ export function UploadDialog({ open, onOpenChange, resumeDocId, initialFile, onC
   const handleGenerate = async () => {
     if (!file) return
     setErrorMsg('')
+
+    // PLANO GRÁTIS: cota mensal de geração (o servidor é a fonte autoritativa;
+    // a cota local cobre quando o aparelho está offline)
+    if (planFree) {
+      if ((simuladosLeft ?? 0) <= 0) {
+        setStep('error')
+        setErrorMsg(
+          `Você já gerou os ${FREE_PLAN.simuladosPerMonth} simulados do plano grátis neste mês. Assine o plano para gerar sem limite — menos de R$ 0,60 por dia.`,
+        )
+        return
+      }
+      try {
+        const res = await fetch('/api/usage/simulado', { method: 'POST' })
+        const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string }
+        if (!res.ok || data.ok === false) {
+          setStep('error')
+          setErrorMsg(
+            data.error ||
+              `Você já gerou os ${FREE_PLAN.simuladosPerMonth} simulados do plano grátis neste mês. Assine o plano para gerar sem limite.`,
+          )
+          return
+        }
+      } catch {
+        /* offline: segue com a cota local */
+      }
+      // Consumiu a cota local (o servidor já registrou a sua)
+      recordSimuladoGenerated()
+    }
+
     setStep('extracting')
     try {
       const baseTitle = (title.trim() || file.name.replace(/\.pdf$/i, '').replace(/[_-]+/g, ' ') || 'Simulado de PDF').slice(0, 120)
@@ -658,6 +705,14 @@ export function UploadDialog({ open, onOpenChange, resumeDocId, initialFile, onC
               </p>
             )}
 
+            {/* Plano grátis: lembrete da cota mensal de geração */}
+            {planFree && simuladosLeft !== null && (
+              <p className="rounded-lg bg-amber-50 px-3.5 py-2.5 text-xs leading-relaxed text-amber-800 ring-1 ring-amber-200">
+                Plano grátis: restam <b>{simuladosLeft} de {FREE_PLAN.simuladosPerMonth} simulados</b> para gerar
+                neste mês — assinantes geram ilimitados.
+              </p>
+            )}
+
             <Button
               onClick={() => void handleGenerate()}
               disabled={!file || busy}
@@ -786,6 +841,17 @@ export function UploadDialog({ open, onOpenChange, resumeDocId, initialFile, onC
                   className="flex-1 border-amber-300 font-bold text-amber-900 hover:bg-amber-50"
                 >
                   <Bot className="mr-1.5 h-4 w-4" /> Configurações da IA
+                </Button>
+              )}
+              {errorMsg.includes('plano grátis') && (
+                <Button
+                  onClick={() => {
+                    onOpenChange(false)
+                    onUpgrade?.()
+                  }}
+                  className="flex-1 bg-amber-400 font-bold text-slate-950 hover:bg-amber-300"
+                >
+                  <Sparkles className="mr-1.5 h-4 w-4" /> Assinar e liberar tudo
                 </Button>
               )}
               <Button variant="outline" onClick={() => onOpenChange(false)} className="flex-1 border-slate-300">

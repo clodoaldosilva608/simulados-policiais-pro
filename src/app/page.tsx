@@ -42,6 +42,14 @@ import {
 } from '@/lib/local-db'
 import { buildRandomPack, type RandomFormat } from '@/lib/random-simulado'
 import { answeredThisWeek } from '@/lib/weekly-goal'
+import {
+  planFromAccess,
+  recordAnswered,
+  recordSimuladoGenerated,
+  usageSnapshot,
+  type PlanInfo,
+} from '@/lib/plan'
+import { PlanUpsellDialog, type UpsellReason } from '@/components/simulado/promo-dialogs'
 
 function statsFromAttempts(attempts: LocalAttempt[]): DashboardStats {
   // Dedupe defensivo: a mesma prova concluída no mesmo instante (±60s) conta
@@ -255,6 +263,16 @@ export default function Home() {
   const [phase, setPhase] = useState<Phase>('library')
   const [accessMode, setAccessMode] = useState<'registrar' | 'entrar'>('registrar')
 
+  // PLANO DO ALUNO: assinante/teste = premium (tudo liberado); expirado ou
+  // assinatura cancelada = plano grátis (limites do FREE_PLAN na lib/plan.ts)
+  const plan: PlanInfo = planFromAccess(session.access)
+  const planFree = plan.plan === 'free'
+  const usage = planFree ? usageSnapshot() : null
+
+  // Pop-up de upgrade aberto a partir das telas de estudo (quota/comentários)
+  const [upsell, setUpsell] = useState<UpsellReason | null>(null)
+  const openUpsell = useCallback((reason: UpsellReason) => setUpsell(reason), [])
+
   // Biblioteca (simulados de PDF salvos localmente)
   const [docs, setDocs] = useState<DocumentSummary[]>([])
   const [docsLoading, setDocsLoading] = useState(true)
@@ -353,8 +371,10 @@ export default function Home() {
     }
   }, [docs])
 
-  // Fase inicial: sessão válida com acesso → biblioteca; conta sem acesso →
-  // tela de conta/ativação; sem sessão → landing.
+  // Fase inicial: conta autenticada SEMPRE entra no app — assinante/teste com
+  // acesso completo e conta com teste expirado/assinatura cancelada no PLANO
+  // GRÁTIS (limitado). Sem sessão → landing; banida/revogada nem autentica
+  // (o servidor devolve 401/403 e o fluxo de acesso aparece).
   // IMPORTANTE: NÃO força 'access' → 'library' — quando o aluno abre Minha
   // conta pelo menu, o heartbeat (a cada 5 min) atualiza session.access e
   // antes isso EXPULSAVA a pessoa da tela antes de ver seus dados. A volta
@@ -362,15 +382,12 @@ export default function Home() {
   useEffect(() => {
     if (session.loading) return
     setHydrated(true)
-    const has =
-      session.authed &&
-      session.access &&
-      (session.access.status === 'trial' || session.access.status === 'active')
+    const has = session.authed && Boolean(session.access)
     if (has) {
       // só resgata quem ficou preso na landing — não mexe em acesso/desempenho
       setPhase((p) => (p === 'landing' ? 'library' : p))
     } else if (session.authed) {
-      // conta autenticada sem acesso: só pode navegar landing/acesso
+      // conta autenticada sem status de acesso (caso raro): tela de conta/ativação
       setPhase((p) =>
         p === 'library' || p === 'desempenho' || p === 'welcome' || p === 'exam' || p === 'results' || p === 'review' || p === 'ia'
           ? 'access'
@@ -432,6 +449,8 @@ export default function Home() {
     try {
       const generated = await buildRandomPack(opts)
       if (!generated) return
+      // Plano grátis: sorteio conta como 1 simulado gerado no mês
+      if (planFree) recordSimuladoGenerated()
       setPack(generated)
       setAttempts([])
       setSavedMeta(null)
@@ -442,7 +461,7 @@ export default function Home() {
     } finally {
       setPackLoading(false)
     }
-  }, [])
+  }, [planFree])
 
   const handleStart = (name: string, mode: ExamMode) => {
     if (!pack) return
@@ -567,10 +586,9 @@ export default function Home() {
     )
   }
 
-  const hasAccess =
-    session.authed && session.access && (session.access.status === 'trial' || session.access.status === 'active')
+  const hasAccess = session.authed && Boolean(session.access)
 
-  // Sem acesso: landing ou tela de conta (cadastro obrigatório)
+  // Sem sessão: landing ou tela de conta (cadastro obrigatório)
   if (!hasAccess) {
     if (phase === 'access') {
       return (
@@ -622,6 +640,8 @@ export default function Home() {
           trialDaysLeft: session.access?.status === 'trial' ? (session.access.trialDaysLeft ?? 0) : null,
           trialEndsAt: session.access?.trialEndsAt ?? null,
         }}
+        plan={plan}
+        usage={usage}
         accountEmail={session.user?.email}
         accountName={displayNameOf(session.user)}
         accountPhoto={session.user?.photo}
@@ -689,7 +709,12 @@ export default function Home() {
   }
 
   if (phase === 'erros') {
-    return <ErrorsScreen onBack={() => setPhase('library')} />
+    return (
+      <>
+        <ErrorsScreen onBack={() => setPhase('library')} planFree={planFree} onUpgrade={() => openUpsell('comments')} />
+        <PlanUpsellDialog open={upsell !== null} onOpenChange={(o) => !o && setUpsell(null)} reason={upsell ?? 'comments'} />
+      </>
+    )
   }
 
   if (phase === 'ia') {
@@ -708,10 +733,19 @@ export default function Home() {
 
   if (phase === 'exam' && state && !state.finished) {
     return (
-      <ExamScreen
-        pack={pack}
-        state={state}
-        onAnswer={(qid, key) => setState((s) => (s ? { ...s, answers: { ...s.answers, [qid]: key } } : s))}
+      <>
+        <ExamScreen
+          pack={pack}
+          state={state}
+          planFree={planFree}
+          questionsLeft={usage ? usage.questionsLeft : null}
+          onUpgrade={() => openUpsell('questions')}
+          onCommentsUpgrade={() => openUpsell('comments')}
+          onAnswer={(qid, key) => {
+            // Plano grátis: cada 1ª resposta de questão conta na cota diária
+            if (planFree && state && !state.answers[qid]) recordAnswered()
+            setState((s) => (s ? { ...s, answers: { ...s.answers, [qid]: key } } : s))
+          }}
         onToggleMark={(qid) =>
           setState((s) =>
             s
@@ -726,7 +760,9 @@ export default function Home() {
           setState((s) => (s ? { ...s, current: Math.min(Math.max(index, 0), pack.questions.length - 1) } : s))
         }
         onFinish={handleFinish}
-      />
+        />
+        <PlanUpsellDialog open={upsell !== null} onOpenChange={(o) => !o && setUpsell(null)} reason={upsell ?? 'questions'} />
+      </>
     )
   }
 
@@ -765,28 +801,40 @@ export default function Home() {
 
   if (phase === 'review' && state?.finished) {
     return (
-      <ReviewScreen
-        pack={pack}
-        answers={state.answers}
-        marked={state.marked}
-        onBack={() => setPhase('results')}
-      />
+      <>
+        <ReviewScreen
+          pack={pack}
+          answers={state.answers}
+          marked={state.marked}
+          planFree={planFree}
+          onUpgrade={() => openUpsell('comments')}
+          onBack={() => setPhase('results')}
+        />
+        <PlanUpsellDialog open={upsell !== null} onOpenChange={(o) => !o && setUpsell(null)} reason={upsell ?? 'comments'} />
+      </>
     )
   }
 
   return (
-    <WelcomeScreen
-      pack={pack}
-      defaultName={savedMeta?.name ?? ''}
-      defaultMode={savedMeta?.mode ?? 'prova'}
-      hasSaved={Boolean(savedMeta)}
-      savedFinished={Boolean(savedMeta?.finished)}
-      attempts={attempts}
-      onStart={handleStart}
-      onContinue={handleContinue}
-      onViewResults={handleViewResults}
-      onDiscard={handleDiscard}
-      onBack={backToLibrary}
-    />
+    <>
+      <WelcomeScreen
+        pack={pack}
+        defaultName={savedMeta?.name ?? ''}
+        defaultMode={savedMeta?.mode ?? 'prova'}
+        hasSaved={Boolean(savedMeta)}
+        savedFinished={Boolean(savedMeta?.finished)}
+        attempts={attempts}
+        planFree={planFree}
+        questionsLeft={usage ? usage.questionsLeft : null}
+        simuladosLeft={usage ? usage.simuladosLeft : null}
+        onUpgrade={() => openUpsell('comments')}
+        onStart={handleStart}
+        onContinue={handleContinue}
+        onViewResults={handleViewResults}
+        onDiscard={handleDiscard}
+        onBack={backToLibrary}
+      />
+      <PlanUpsellDialog open={upsell !== null} onOpenChange={(o) => !o && setUpsell(null)} reason={upsell ?? 'comments'} />
+    </>
   )
 }

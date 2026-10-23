@@ -15,6 +15,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { HtmlContent } from './html-content'
 import { TextBlockCard } from './text-block-card'
+import { CommentLocked } from './comment-lock'
 import { getPackSubject, answerLabel, isCertErrado, type OptionKey, type SimuladoPack } from '@/data/simulado'
 
 type FilterKey = 'todas' | 'acertos' | 'erros' | 'branco' | 'sinalizadas'
@@ -23,6 +24,10 @@ interface ReviewScreenProps {
   pack: SimuladoPack
   answers: Record<number, OptionKey>
   marked: number[]
+  /** Plano grátis: comentários do professor bloqueados */
+  planFree?: boolean
+  /** Abre o pop-up de assinatura */
+  onUpgrade?: () => void
   onBack: () => void
 }
 
@@ -37,7 +42,7 @@ function statusOf(
   return a === q.answer ? 'acertos' : 'erros'
 }
 
-export function ReviewScreen({ pack, answers, marked, onBack }: ReviewScreenProps) {
+export function ReviewScreen({ pack, answers, marked, planFree = false, onUpgrade, onBack }: ReviewScreenProps) {
   const [filter, setFilter] = useState<FilterKey>('todas')
   const markedSet = new Set(marked)
   const QUESTIONS = pack.questions
@@ -203,12 +208,18 @@ export function ReviewScreen({ pack, answers, marked, onBack }: ReviewScreenProp
                     </p>
                   )}
 
-                  <div className="mt-5 rounded-lg border-l-4 border-amber-400 bg-amber-50/70 px-4 py-3">
-                    <p className="mb-2 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-amber-700">
-                      <Lightbulb className="h-4 w-4" /> Comentário
-                    </p>
-                    <HtmlContent html={q.comment} className="text-sm" />
-                  </div>
+                  {planFree ? (
+                    <div className="mt-5">
+                      <CommentLocked onUpgrade={() => onUpgrade?.()} />
+                    </div>
+                  ) : (
+                    <div className="mt-5 rounded-lg border-l-4 border-amber-400 bg-amber-50/70 px-4 py-3">
+                      <p className="mb-2 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-amber-700">
+                        <Lightbulb className="h-4 w-4" /> Comentário
+                      </p>
+                      <HtmlContent html={q.comment} className="text-sm" />
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             </motion.div>
