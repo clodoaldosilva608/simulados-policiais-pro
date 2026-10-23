@@ -8,6 +8,7 @@ import { LibraryScreen, type SavedInfo, type DashboardStats } from '@/components
 import { PerformanceScreen, type PerfTab } from '@/components/simulado/performance-screen'
 import { PomodoroScreen } from '@/components/simulado/pomodoro-screen'
 import { ErrorsScreen } from '@/components/simulado/errors-screen'
+import { AiSettingsScreen } from '@/components/simulado/ai-settings-screen'
 import { WelcomeScreen, type AttemptInfo } from '@/components/simulado/welcome-screen'
 import { ExamScreen } from '@/components/simulado/exam-screen'
 import { ResultsScreen } from '@/components/simulado/results-screen'
@@ -104,7 +105,7 @@ function displayNameOf(user: { name?: string; email?: string } | null | undefine
     .join(' ')
 }
 
-type Phase = 'landing' | 'access' | 'library' | 'desempenho' | 'pomodoro' | 'erros' | 'welcome' | 'exam' | 'results' | 'review'
+type Phase = 'landing' | 'access' | 'library' | 'desempenho' | 'pomodoro' | 'erros' | 'ia' | 'welcome' | 'exam' | 'results' | 'review'
 
 const storageKeyFor = (docId: string) => `simulado-${docId}`
 
@@ -369,7 +370,7 @@ export default function Home() {
     } else if (session.authed) {
       // conta autenticada sem acesso: só pode navegar landing/acesso
       setPhase((p) =>
-        p === 'library' || p === 'desempenho' || p === 'welcome' || p === 'exam' || p === 'results' || p === 'review'
+        p === 'library' || p === 'desempenho' || p === 'welcome' || p === 'exam' || p === 'results' || p === 'review' || p === 'ia'
           ? 'access'
           : p,
       )
@@ -629,6 +630,7 @@ export default function Home() {
         }}
         onOpenPomodoro={() => setPhase('pomodoro')}
         onOpenErrors={() => setPhase('erros')}
+        onOpenAiSettings={() => setPhase('ia')}
         errorCount={errorCount}
         onRandomSimulado={(opts) => void handleRandomSimulado(opts)}
         weekAnswered={answeredThisWeek(allAttempts)}
@@ -662,6 +664,10 @@ export default function Home() {
 
   if (phase === 'erros') {
     return <ErrorsScreen onBack={() => setPhase('library')} />
+  }
+
+  if (phase === 'ia') {
+    return <AiSettingsScreen onBack={() => setPhase('library')} />
   }
 
   // Telas que dependem do pack

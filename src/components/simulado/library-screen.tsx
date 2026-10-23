@@ -7,6 +7,7 @@ import {
   BadgeCheck,
   BookOpen,
   BookX,
+  Bot,
   CheckCircle2,
   ChevronRight,
   Crown,
@@ -42,6 +43,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
+import { getAiSettings } from '@/lib/ai-settings'
 import {
   Dialog,
   DialogContent,
@@ -134,6 +136,8 @@ interface LibraryScreenProps {
   onOpenPomodoro: () => void
   /** Abre o caderno de erros (questões erradas para revisar) */
   onOpenErrors: () => void
+  /** Abre a aba Configurações da IA (comportamento + chave de API) */
+  onOpenAiSettings: () => void
   /** Quantidade de questões no caderno de erros (badge do menu) */
   errorCount?: number
   /** Gera e abre um simulado aleatório com as opções escolhidas */
@@ -353,6 +357,7 @@ export function LibraryScreen({
   onOpenPerformance,
   onOpenPomodoro,
   onOpenErrors,
+  onOpenAiSettings,
   errorCount,
   onRandomSimulado,
   weekAnswered,
@@ -370,6 +375,12 @@ export function LibraryScreen({
   const [dragOver, setDragOver] = useState(false)
   const [formatFilter, setFormatFilter] = useState<FormatFilter>('todos')
   const dropCount = useRef(0)
+  // Status da chave de IA (hint do menu; null = ainda não leu o localStorage)
+  const [aiKeySet, setAiKeySet] = useState<boolean | null>(null)
+  useEffect(() => {
+    const id = window.setTimeout(() => setAiKeySet(Boolean(getAiSettings().apiKey)), 0)
+    return () => window.clearTimeout(id)
+  }, [])
 
   // Simulado aleatório (diálogo de opções)
   const [randomOpen, setRandomOpen] = useState(false)
@@ -647,6 +658,21 @@ export function LibraryScreen({
                     onClick={() => {
                       setMenuOpen(false)
                       onOpenErrors()
+                    }}
+                  />
+                  <MenuItem
+                    icon={Bot}
+                    label="Configurações da IA"
+                    hint={
+                      aiKeySet === false
+                        ? 'Conecte a sua chave gratuita do Google'
+                        : aiKeySet === true
+                          ? 'Chave configurada • pronto para gerar'
+                          : 'Comportamento e chave de API'
+                    }
+                    onClick={() => {
+                      setMenuOpen(false)
+                      onOpenAiSettings()
                     }}
                   />
                   <MenuItem
@@ -1195,6 +1221,7 @@ export function LibraryScreen({
         resumeDocId={resumeDocId}
         initialFile={initialFile}
         onCompleted={onUploadCompleted}
+        onOpenAiSettings={onOpenAiSettings}
       />
 
       {/* Dialog do simulado aleatório */}

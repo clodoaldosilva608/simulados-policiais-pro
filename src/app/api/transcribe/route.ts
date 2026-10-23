@@ -1,6 +1,6 @@
 import { NextResponse, NextRequest } from 'next/server'
 import ZAI from 'z-ai-web-dev-sdk'
-import { aiChatVision } from '@/lib/ai-gateway'
+import { aiChatVision, type AiCallConfig } from '@/lib/ai-gateway'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -37,13 +37,14 @@ async function viaZaiVision(images: string[]): Promise<string> {
 }
 
 /** Provedor 2: gateway OpenAI-compatível (produção/Vercel) */
-function viaGatewayVision(images: string[]): Promise<string> {
-  return aiChatVision(TRANSCRIBE_PROMPT, images)
+function viaGatewayVision(images: string[], cfg?: AiCallConfig): Promise<string> {
+  return aiChatVision(TRANSCRIBE_PROMPT, images, cfg)
 }
 
 /**
  * POST /api/transcribe
  * Recebe um lote de páginas (data URLs JPEG) de um PDF escaneado e devolve o texto transcrito.
+ * Opcionalmente usa a chave de IA do aluno (Google AI Studio) enviada no corpo.
  */
 export async function POST(req: NextRequest) {
   if (!hasValidAccess(req)) {
@@ -53,11 +54,19 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  let body: { images?: unknown }
+  let body: { images?: unknown; apiKey?: unknown; model?: unknown }
   try {
     body = (await req.json()) as typeof body
   } catch {
     return NextResponse.json({ error: 'Requisição inválida' }, { status: 400 })
+  }
+
+  const userCfg: AiCallConfig = {}
+  if (typeof body.apiKey === 'string' && body.apiKey.trim()) {
+    userCfg.apiKey = body.apiKey.trim().slice(0, 300)
+  }
+  if (typeof body.model === 'string' && body.model.trim()) {
+    userCfg.model = body.model.trim().slice(0, 80)
   }
 
   const images = Array.isArray(body.images)
@@ -71,25 +80,64 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Imagem muito grande' }, { status: 413 })
   }
 
-  const errors: string[] = []
-  for (const provider of [viaZaiVision, viaGatewayVision]) {
+  const errors: { message: string; status?: number }[] = []
+  const providers: { run: () => Promise<string> }[] = [
+    ...(userCfg.apiKey ? [{ run: () => viaGatewayVision(images, userCfg) }] : []),
+    { run: () => viaZaiVision(images) },
+    { run: () => viaGatewayVision(images) },
+  ]
+  for (const provider of providers) {
     try {
-      const text = await provider(images)
+      const text = await provider.run()
       if (text.trim()) return NextResponse.json({ text })
-      errors.push('resposta vazia')
+      errors.push({ message: 'resposta vazia' })
     } catch (err) {
-      errors.push(err instanceof Error ? err.message : String(err))
+      const status =
+        err instanceof Error && typeof (err as Error & { status?: number }).status === 'number'
+          ? (err as Error & { status?: number }).status
+          : undefined
+      errors.push({ message: err instanceof Error ? err.message : String(err), status })
     }
   }
 
-  console.error('[transcribe] provedores falharam:', errors)
-  const aiUnavailable = errors.some(
-    (m) => m.includes('IA não configurada') || m.includes('Provedor de IA respondeu') || m.includes('Failed to make API request') || m.includes('Configuration file not found'),
+  console.error('[transcribe] provedores falharam:', errors.map((e) => e.message))
+  const keyRejected = errors.some(
+    (e) =>
+      e.status === 401 ||
+      e.status === 403 ||
+      (e.status === 400 && /api key/i.test(e.message)),
   )
+  const quota = errors.some((e) => e.status === 429)
+  const aiUnavailable = errors.some(
+    (e) =>
+      e.message.includes('IA não configurada') ||
+      e.message.includes('Provedor de IA respondeu') ||
+      e.message.includes('Failed to make API request') ||
+      e.message.includes('Configuration file not found'),
+  )
+
+  if (keyRejected) {
+    return NextResponse.json(
+      {
+        error:
+          'Sua chave de IA foi recusada pelo Google. Abra Menu → Configurações da IA, confira a chave e teste novamente.',
+      },
+      { status: 403 },
+    )
+  }
+  if (quota) {
+    return NextResponse.json(
+      {
+        error:
+          'A cota gratuita da sua chave acabou por agora. Aguarde alguns minutos ou escolha outro modelo nas Configurações da IA.',
+      },
+      { status: 429 },
+    )
+  }
   return NextResponse.json(
     {
       error: aiUnavailable
-        ? 'Serviço de leitura por IA temporariamente indisponível. Tente novamente em alguns minutos.'
+        ? 'Serviço de leitura por IA temporariamente indisponível. Configure a SUA chave gratuita em Menu → Configurações da IA para ler PDFs sem depender do serviço do app.'
         : 'Não foi possível transcrever este lote de páginas.',
     },
     { status: aiUnavailable ? 503 : 500 },

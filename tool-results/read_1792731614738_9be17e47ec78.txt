@@ -1,0 +1,761 @@
+     1→     1→'use client'
+     2→     2→
+     3→     3→import { useCallback, useEffect, useState } from 'react'
+     4→     4→import { Loader2, GraduationCap, ShieldCheck } from 'lucide-react'
+     5→     5→import { LandingPage } from '@/components/landing/landing-page'
+     6→     6→import { AccessScreen } from '@/components/simulado/access-screen'
+     7→     7→import { LibraryScreen, type SavedInfo, type DashboardStats } from '@/components/simulado/library-screen'
+     8→     8→import { PerformanceScreen, type PerfTab } from '@/components/simulado/performance-screen'
+     9→     9→import { PomodoroScreen } from '@/components/simulado/pomodoro-screen'
+    10→    10→import { ErrorsScreen } from '@/components/simulado/errors-screen'
+    11→    11→import { WelcomeScreen, type AttemptInfo } from '@/components/simulado/welcome-screen'
+    12→    12→import { ExamScreen } from '@/components/simulado/exam-screen'
+    13→    13→import { ResultsScreen } from '@/components/simulado/results-screen'
+    14→    14→import { ReviewScreen } from '@/components/simulado/review-screen'
+    15→    15→import {
+    16→    16→  STATIC_PACKS,
+    17→    17→  getStaticPack,
+    18→    18→  type DocumentSummary,
+    19→    19→  type ExamMode,
+    20→    20→  type ExamState,
+    21→    21→  type OptionKey,
+    22→    22→  type SimuladoPack,
+    23→    23→} from '@/data/simulado'
+    24→    24→import { useSession } from '@/lib/session'
+    25→    25→import { SITE } from '@/config/site'
+    26→    26→import {
+    27→    27→  listLocalDocuments,
+    28→    28→  getLocalDocument,
+    29→    29→  deleteLocalDocument,
+    30→    30→  addLocalAttempt,
+    31→    31→  listLocalAttempts,
+    32→    32→  listAllLocalAttempts,
+    33→    33→  hasAttemptWithId,
+    34→    34→  recordWrongQuestions,
+    35→    35→  countDueWrongQuestions,
+    36→    36→  localDocToPack,
+    37→    37→  type LocalAttempt,
+    38→    38→  type WrongQuestionInput,
+    39→    39→} from '@/lib/local-db'
+    40→    40→import { buildRandomPack, type RandomFormat } from '@/lib/random-simulado'
+    41→    41→import { answeredThisWeek } from '@/lib/weekly-goal'
+    42→    42→
+    43→    43→function statsFromAttempts(attempts: LocalAttempt[]): DashboardStats {
+    44→    44→  // Dedupe defensivo: a mesma prova concluída no mesmo instante (±60s) conta
+    45→    45→  // uma única vez — protege o painel de qualquer duplicidade histórica.
+    46→    46→  const ordered = [...attempts].sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1))
+    47→    47→  const kept: { docId: string; t: number }[] = []
+    48→    48→  const unique: LocalAttempt[] = []
+    49→    49→  for (const a of ordered) {
+    50→    50→    const t = new Date(a.createdAt).getTime()
+    51→    51→    if (kept.some((k) => k.docId === a.docId && Math.abs(k.t - t) < 60_000)) continue
+    52→    52→    kept.push({ docId: a.docId, t })
+    53→    53→    unique.push(a)
+    54→    54→  }
+    55→    55→  let answered = 0
+    56→    56→  let correct = 0
+    57→    57→  const subjects = new Map<string, { correct: number; answered: number }>()
+    58→    58→  for (const a of unique) {
+    59→    59→    const ans = typeof a.answered === 'number' ? a.answered : a.total
+    60→    60→    answered += Math.min(Math.max(ans, 0), a.total)
+    61→    61→    correct += Math.min(Math.max(a.correct, 0), a.total)
+    62→    62→    // Agrega métricas por disciplina (tentativas antigas podem não ter bySubject)
+    63→    63→    if (a.bySubject) {
+    64→    64→      for (const [name, agg] of Object.entries(a.bySubject)) {
+    65→    65→        if (!agg || typeof agg.answered !== 'number') continue
+    66→    66→        let acc = subjects.get(name)
+    67→    67→        if (!acc) {
+    68→    68→          acc = { correct: 0, answered: 0 }
+    69→    69→          subjects.set(name, acc)
+    70→    70→        }
+    71→    71→        acc.answered += Math.max(0, agg.answered)
+    72→    72→        acc.correct += Math.min(Math.max(agg.correct ?? 0, 0), agg.answered)
+    73→    73→      }
+    74→    74→    }
+    75→    75→  }
+    76→    76→  const wrong = Math.max(0, answered - correct)
+    77→    77→  const pct = answered > 0 ? Math.round((correct / answered) * 100) : 0
+    78→    78→  // Lista por disciplina: mais respondidas primeiro; empate → menor aproveitamento
+    79→    79→  const subjectStats = [...subjects.entries()]
+    80→    80→    .map(([name, agg]) => ({
+    81→    81→      name,
+    82→    82→      correct: agg.correct,
+    83→    83→      answered: agg.answered,
+    84→    84→      pct: agg.answered > 0 ? Math.round((agg.correct / agg.answered) * 100) : 0,
+    85→    85→    }))
+    86→    86→    .sort((x, y) => y.answered - x.answered || x.pct - y.pct || x.name.localeCompare(y.name))
+    87→    87→  return { attempts: unique.length, answered, correct, wrong, pct, subjects: subjectStats }
+    88→    88→}
+    89→    89→
+    90→    90→/** Nome para exibição: nome cadastrado ou deriva do e-mail */
+    91→    91→function displayNameOf(user: { name?: string; email?: string } | null | undefined): string {
+    92→    92→  const n = user?.name?.trim()
+    93→    93→  if (n) return n.split(/\s+/)[0]
+    94→    94→  const prefix = (user?.email ?? '').split('@')[0] ?? ''
+    95→    95→  const words = prefix
+    96→    96→    .replace(/[._\-+0-9]+/g, ' ')
+    97→    97→    .trim()
+    98→    98→    .split(/\s+/)
+    99→    99→    .filter(Boolean)
+   100→   100→  if (words.length === 0) return 'Aluno'
+   101→   101→  return words
+   102→   102→    .slice(0, 2)
+   103→   103→    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+   104→   104→    .join(' ')
+   105→   105→}
+   106→   106→
+   107→   107→type Phase = 'landing' | 'access' | 'library' | 'desempenho' | 'pomodoro' | 'erros' | 'welcome' | 'exam' | 'results' | 'review'
+   108→   108→
+   109→   109→const storageKeyFor = (docId: string) => `simulado-${docId}`
+   110→   110→
+   111→   111→function freshState(name: string, mode: ExamMode): ExamState {
+   112→   112→  return {
+   113→   113→    name,
+   114→   114→    mode,
+   115→   115→    startedAt: Date.now(),
+   116→   116→    finished: false,
+   117→   117→    finishedAt: null,
+   118→   118→    current: 0,
+   119→   119→    answers: {},
+   120→   120→    marked: [],
+   121→   121→  }
+   122→   122→}
+   123→   123→
+   124→   124→/** Mapa subjectId → nome de exibição da disciplina (packs oficiais) */
+   125→   125→function subjectNameMap(pack: SimuladoPack): Map<string, string> {
+   126→   126→  const map = new Map<string, string>()
+   127→   127→  for (const s of pack.subjects) map.set(s.id, s.name || s.id)
+   128→   128→  return map
+   129→   129→}
+   130→   130→
+   131→   131→/**
+   132→   132→ * Desempenho por disciplina de uma tentativa (chave = nome exibido).
+   133→   133→ * Disciplinas de PDFs já vêm com subjectId = nome — aí o mapa é nulo.
+   134→   134→ */
+   135→   135→function bySubjectFrom(
+   136→   136→  questions: { id: string; answer: OptionKey; subjectId: string }[],
+   137→   137→  answers: Record<string, OptionKey>,
+   138→   138→  subjectNames: Map<string, string> | null,
+   139→   139→): Record<string, { correct: number; answered: number }> {
+   140→   140→  const out: Record<string, { correct: number; answered: number }> = {}
+   141→   141→  for (const q of questions) {
+   142→   142→    const given = answers[q.id]
+   143→   143→    if (!given) continue
+   144→   144→    const name = subjectNames?.get(q.subjectId) ?? q.subjectId
+   145→   145→    const agg = (out[name] ??= { correct: 0, answered: 0 })
+   146→   146→    agg.answered += 1
+   147→   147→    if (given === q.answer) agg.correct += 1
+   148→   148→  }
+   149→   149→  return out
+   150→   150→}
+   151→   151→
+   152→   152→/**
+   153→   153→ * Migração: estados finalizados no localStorage (provas oficiais e PDFs)
+   154→   154→ * que ainda não viraram tentativa no banco local ganham uma tentativa —
+   155→   155→ * assim o painel de métricas inclui o histórico anterior à atualização.
+   156→   156→ */
+   157→   157→async function migrateLegacyFinishedStates(docs: { id: string; title: string }[]): Promise<void> {
+   158→   158→  if (typeof window === 'undefined') return
+   159→   159→  const titles = new Map<string, string>()
+   160→   160→  for (const p of STATIC_PACKS) titles.set(p.id, p.title)
+   161→   161→  for (const d of docs) titles.set(d.id, d.title)
+   162→   162→  for (const docId of titles.keys()) {
+   163→   163→    try {
+   164→   164→      const raw = window.localStorage.getItem(storageKeyFor(docId))
+   165→   165→      if (!raw) continue
+   166→   166→      const parsed = JSON.parse(raw) as Partial<ExamState>
+   167→   167→      if (!parsed?.finished || typeof parsed.finishedAt !== 'number') continue
+   168→   168→      const attemptId = `att-mig-${docId}-${parsed.finishedAt}`
+   169→   169→      if (await hasAttemptWithId(attemptId)) continue
+   170→   170→      // Já existe tentativa registrada nesta conclusão? (ex.: gravação feita
+   171→   171→      // ao finalizar o simulado) — evita contar a mesma prova duas vezes.
+   172→   172→      const existing = await listLocalAttempts(docId)
+   173→   173→      const alreadyRecorded = existing.some(
+   174→   174→        (a) => Math.abs(new Date(a.createdAt).getTime() - parsed.finishedAt!) < 60_000,
+   175→   175→      )
+   176→   176→      if (alreadyRecorded) continue
+   177→   177→      let questions: { id: string; answer: OptionKey; subjectId: string }[] | null = null
+   178→   178→      let subjectNames: Map<string, string> | null = null
+   179→   179→      const staticPack = getStaticPack(docId)
+   180→   180→      if (staticPack) {
+   181→   181→        questions = staticPack.questions
+   182→   182→        subjectNames = subjectNameMap(staticPack)
+   183→   183→      } else {
+   184→   184→        const doc = await getLocalDocument(docId)
+   185→   185→        if (doc) questions = doc.questions // PDFs: subjectId já é o nome
+   186→   186→      }
+   187→   187→      if (!questions || questions.length === 0) continue
+   188→   188→      const answers = parsed.answers ?? {}
+   189→   189→      const correct = questions.filter((q) => answers[q.id] === q.answer).length
+   190→   190→      const answered = questions.filter((q) => answers[q.id]).length
+   191→   191→      const total = questions.length
+   192→   192→      await addLocalAttempt({
+   193→   193→        id: attemptId,
+   194→   194→        docId,
+   195→   195→        name: parsed.name ?? '',
+   196→   196→        title: titles.get(docId),
+   197→   197→        bySubject: bySubjectFrom(questions, answers, subjectNames),
+   198→   198→        mode: parsed.mode === 'estudo' ? 'estudo' : 'prova',
+   199→   199→        correct,
+   200→   200→        answered,
+   201→   201→        total,
+   202→   202→        pct: total > 0 ? Math.round((correct / total) * 100) : 0,
+   203→   203→        timeUsedMs: Math.max(0, parsed.finishedAt - (parsed.startedAt ?? parsed.finishedAt)),
+   204→   204→        createdAt: new Date(parsed.finishedAt).toISOString(),
+   205→   205→      })
+   206→   206→    } catch {
+   207→   207→      /* migração é best-effort */
+   208→   208→    }
+   209→   209→  }
+   210→   210→}
+   211→   211→
+   212→   212→function loadSaved(docId: string, maxIndex: number): ExamState | null {
+   213→   213→  if (typeof window === 'undefined') return null
+   214→   214→  try {
+   215→   215→    const raw = window.localStorage.getItem(storageKeyFor(docId))
+   216→   216→    if (!raw) return null
+   217→   217→    const parsed = JSON.parse(raw) as Partial<ExamState>
+   218→   218→    if (!parsed || typeof parsed.startedAt !== 'number' || (parsed.mode !== 'prova' && parsed.mode !== 'estudo')) {
+   219→   219→      return null
+   220→   220→    }
+   221→   221→    return {
+   222→   222→      name: parsed.name ?? '',
+   223→   223→      mode: parsed.mode,
+   224→   224→      startedAt: parsed.startedAt,
+   225→   225→      finished: Boolean(parsed.finished),
+   226→   226→      finishedAt: parsed.finishedAt ?? null,
+   227→   227→      current: Math.min(Math.max(parsed.current ?? 0, 0), Math.max(0, maxIndex)),
+   228→   228→      answers: parsed.answers ?? {},
+   229→   229→      marked: Array.isArray(parsed.marked) ? parsed.marked : [],
+   230→   230→    }
+   231→   231→  } catch {
+   232→   232→    return null
+   233→   233→  }
+   234→   234→}
+   235→   235→
+   236→   236→function peekSavedMeta(docId: string): SavedInfo | null {
+   237→   237→  if (typeof window === 'undefined') return null
+   238→   238→  try {
+   239→   239→    const raw = window.localStorage.getItem(storageKeyFor(docId))
+   240→   240→    if (!raw) return null
+   241→   241→    const parsed = JSON.parse(raw) as Partial<ExamState>
+   242→   242→    if (!parsed || typeof parsed.startedAt !== 'number') return null
+   243→   243→    return { finished: Boolean(parsed.finished) }
+   244→   244→  } catch {
+   245→   245→    return null
+   246→   246→  }
+   247→   247→}
+   248→   248→
+   249→   249→export default function Home() {
+   250→   250→  const session = useSession()
+   251→   251→  const [hydrated, setHydrated] = useState(false)
+   252→   252→  const [phase, setPhase] = useState<Phase>('library')
+   253→   253→  const [accessMode, setAccessMode] = useState<'registrar' | 'entrar'>('registrar')
+   254→   254→
+   255→   255→  // Biblioteca (simulados de PDF salvos localmente)
+   256→   256→  const [docs, setDocs] = useState<DocumentSummary[]>([])
+   257→   257→  const [docsLoading, setDocsLoading] = useState(true)
+   258→   258→  const [savedInfo, setSavedInfo] = useState<Record<string, SavedInfo>>({})
+   259→   259→
+   260→   260→  // Métricas do painel do aluno (acertos/erros em todos os simulados)
+   261→   261→  const [stats, setStats] = useState<DashboardStats | null>(null)
+   262→   262→  // Histórico completo (tela Meu desempenho → aba Histórico)
+   263→   263→  const [allAttempts, setAllAttempts] = useState<LocalAttempt[]>([])
+   264→   264→  const [errorCount, setErrorCount] = useState(0)
+   265→   265→  const [perfTab, setPerfTab] = useState<PerfTab>('resumo')
+   266→   266→
+   267→   267→  // Simulado ativo
+   268→   268→  const [pack, setPack] = useState<SimuladoPack | null>(null)
+   269→   269→  const [packLoading, setPackLoading] = useState(false)
+   270→   270→  const [attempts, setAttempts] = useState<AttemptInfo[]>([])
+   271→   271→  const [state, setState] = useState<ExamState | null>(null)
+   272→   272→  const [savedMeta, setSavedMeta] = useState<{ finished: boolean; mode: ExamMode; name: string } | null>(null)
+   273→   273→
+   274→   274→  const refreshSavedInfo = useCallback((list: { id: string }[]) => {
+   275→   275→    const info: Record<string, SavedInfo> = {}
+   276→   276→    for (const p of STATIC_PACKS) {
+   277→   277→      const meta = peekSavedMeta(p.id)
+   278→   278→      if (meta) info[p.id] = meta
+   279→   279→    }
+   280→   280→    for (const d of list) {
+   281→   281→      const meta = peekSavedMeta(d.id)
+   282→   282→      if (meta) info[d.id] = meta
+   283→   283→    }
+   284→   284→    setSavedInfo(info)
+   285→   285→  }, [])
+   286→   286→
+   287→   287→  // Auto-save do estado em andamento
+   288→   288→  useEffect(() => {
+   289→   289→    if (!state || !pack) return
+   290→   290→    try {
+   291→   291→      window.localStorage.setItem(storageKeyFor(pack.id), JSON.stringify(state))
+   292→   292→    } catch {
+   293→   293→      /* armazenamento indisponível */
+   294→   294→    }
+   295→   295→  }, [state, pack])
+   296→   296→
+   297→   297→  const loadDocs = useCallback(async () => {
+   298→   298→    try {
+   299→   299→      const list = await listLocalDocuments()
+   300→   300→      setDocs(list)
+   301→   301→      refreshSavedInfo(list)
+   302→   302→    } catch {
+   303→   303→      setDocs([])
+   304→   304→    } finally {
+   305→   305→      setDocsLoading(false)
+   306→   306→    }
+   307→   307→  }, [refreshSavedInfo])
+   308→   308→
+   309→   309→  const recomputeStats = useCallback(async () => {
+   310→   310→    try {
+   311→   311→      const all = await listAllLocalAttempts()
+   312→   312→      // Mais recentes primeiro (histórico)
+   313→   313→      const desc = [...all].sort((a, b) => (a.createdAt > b.createdAt ? -1 : 1))
+   314→   314→      setAllAttempts(desc)
+   315→   315→      setStats(statsFromAttempts(desc))
+   316→   316→    } catch {
+   317→   317→      /* métricas são opcionais */
+   318→   318→    }
+   319→   319→  }, [])
+   320→   320→
+   321→   321→  /** Contador do caderno de erros (badge do menu = questões para revisar HOJE) */
+   322→   322→  const refreshErrorCount = useCallback(() => {
+   323→   323→    void countDueWrongQuestions()
+   324→   324→      .then((count) => setErrorCount(count))
+   325→   325→      .catch(() => setErrorCount(0))
+   326→   326→  }, [])
+   327→   327→
+   328→   328→  useEffect(() => {
+   329→   329→    refreshErrorCount()
+   330→   330→  }, [refreshErrorCount])
+   331→   331→
+   332→   332→  // Métricas: migra estados antigos e soma todas as tentativas do aparelho
+   333→   333→  useEffect(() => {
+   334→   334→    let alive = true
+   335→   335→    void (async () => {
+   336→   336→      try {
+   337→   337→        const list = docs.length > 0 ? docs : await listLocalDocuments()
+   338→   338→        await migrateLegacyFinishedStates(list)
+   339→   339→        const all = await listAllLocalAttempts()
+   340→   340→        if (!alive) return
+   341→   341→        const desc = [...all].sort((a, b) => (a.createdAt > b.createdAt ? -1 : 1))
+   342→   342→        setAllAttempts(desc)
+   343→   343→        setStats(statsFromAttempts(desc))
+   344→   344→      } catch {
+   345→   345→        /* métricas são opcionais */
+   346→   346→      }
+   347→   347→    })()
+   348→   348→    return () => {
+   349→   349→      alive = false
+   350→   350→    }
+   351→   351→  }, [docs])
+   352→   352→
+   353→   353→  // Fase inicial: sessão válida com acesso → biblioteca; conta sem acesso →
+   354→   354→  // tela de conta/ativação; sem sessão → landing.
+   355→   355→  // IMPORTANTE: NÃO força 'access' → 'library' — quando o aluno abre Minha
+   356→   356→  // conta pelo menu, o heartbeat (a cada 5 min) atualiza session.access e
+   357→   357→  // antes isso EXPULSAVA a pessoa da tela antes de ver seus dados. A volta
+   358→   358→  // da tela de acesso é sempre manual (Voltar / Entrar).
+   359→   359→  useEffect(() => {
+   360→   360→    if (session.loading) return
+   361→   361→    setHydrated(true)
+   362→   362→    const has =
+   363→   363→      session.authed &&
+   364→   364→      session.access &&
+   365→   365→      (session.access.status === 'trial' || session.access.status === 'active')
+   366→   366→    if (has) {
+   367→   367→      // só resgata quem ficou preso na landing — não mexe em acesso/desempenho
+   368→   368→      setPhase((p) => (p === 'landing' ? 'library' : p))
+   369→   369→    } else if (session.authed) {
+   370→   370→      // conta autenticada sem acesso: só pode navegar landing/acesso
+   371→   371→      setPhase((p) =>
+   372→   372→        p === 'library' || p === 'desempenho' || p === 'welcome' || p === 'exam' || p === 'results' || p === 'review'
+   373→   373→          ? 'access'
+   374→   374→          : p,
+   375→   375→      )
+   376→   376→    } else {
+   377→   377→      setPhase((p) => (p === 'landing' || p === 'access' ? p : 'landing'))
+   378→   378→    }
+   379→   379→  }, [session.loading, session.authed, session.access])
+   380→   380→
+   381→   381→  useEffect(() => {
+   382→   382→    void loadDocs()
+   383→   383→  }, [loadDocs])
+   384→   384→
+   385→   385→  const handleUploadCompleted = useCallback(() => {
+   386→   386→    void loadDocs()
+   387→   387→  }, [loadDocs])
+   388→   388→
+   389→   389→  const openDoc = useCallback(async (docId: string) => {
+   390→   390→    const staticPack = getStaticPack(docId)
+   391→   391→    if (staticPack) {
+   392→   392→      setPack(staticPack)
+   393→   393→      setAttempts([])
+   394→   394→      const saved = loadSaved(docId, staticPack.questions.length - 1)
+   395→   395→      setSavedMeta(saved ? { finished: saved.finished, mode: saved.mode, name: saved.name } : null)
+   396→   396→      setPhase('welcome')
+   397→   397→      return
+   398→   398→    }
+   399→   399→    setPackLoading(true)
+   400→   400→    setPhase('welcome') // exibe carregamento na transição
+   401→   401→    try {
+   402→   402→      const doc = await getLocalDocument(docId)
+   403→   403→      if (!doc) throw new Error('Simulado não encontrado')
+   404→   404→      const built = localDocToPack(doc)
+   405→   405→      setPack(built)
+   406→   406→      const saved = loadSaved(built.id, built.questions.length - 1)
+   407→   407→      setSavedMeta(saved ? { finished: saved.finished, mode: saved.mode, name: saved.name } : null)
+   408→   408→      const localAttempts = await listLocalAttempts(doc.id)
+   409→   409→      setAttempts(localAttempts)
+   410→   410→    } catch {
+   411→   411→      setPack(null)
+   412→   412→      setPhase('library')
+   413→   413→    } finally {
+   414→   414→      setPackLoading(false)
+   415→   415→    }
+   416→   416→  }, [])
+   417→   417→
+   418→   418→  const backToLibrary = useCallback(() => {
+   419→   419→    setPack(null)
+   420→   420→    setState(null)
+   421→   421→    setSavedMeta(null)
+   422→   422→    setPhase('library')
+   423→   423→    void loadDocs()
+   424→   424→  }, [loadDocs])
+   425→   425→
+   426→   426→  /** SIMULADO ALEATÓRIO: sorteia uma prova de todas as fontes e abre */
+   427→   427→  const handleRandomSimulado = useCallback(async (opts: { count: number; format: RandomFormat }) => {
+   428→   428→    setPackLoading(true)
+   429→   429→    try {
+   430→   430→      const generated = await buildRandomPack(opts)
+   431→   431→      if (!generated) return
+   432→   432→      setPack(generated)
+   433→   433→      setAttempts([])
+   434→   434→      setSavedMeta(null)
+   435→   435→      setState(null)
+   436→   436→      setPhase('welcome')
+   437→   437→    } catch {
+   438→   438→      /* sorteio é best-effort — segue na biblioteca */
+   439→   439→    } finally {
+   440→   440→      setPackLoading(false)
+   441→   441→    }
+   442→   442→  }, [])
+   443→   443→
+   444→   444→  const handleStart = (name: string, mode: ExamMode) => {
+   445→   445→    if (!pack) return
+   446→   446→    setState(freshState(name, mode))
+   447→   447→    setSavedMeta({ finished: false, mode, name })
+   448→   448→    setPhase('exam')
+   449→   449→  }
+   450→   450→
+   451→   451→  const handleContinue = () => {
+   452→   452→    if (!pack) return
+   453→   453→    const saved = loadSaved(pack.id, pack.questions.length - 1)
+   454→   454→    if (saved) {
+   455→   455→      setState(saved)
+   456→   456→      setPhase(saved.finished ? 'results' : 'exam')
+   457→   457→    }
+   458→   458→  }
+   459→   459→
+   460→   460→  const handleViewResults = () => {
+   461→   461→    if (!pack) return
+   462→   462→    const saved = loadSaved(pack.id, pack.questions.length - 1)
+   463→   463→    if (saved) {
+   464→   464→      setState(saved)
+   465→   465→      setPhase('results')
+   466→   466→    }
+   467→   467→  }
+   468→   468→
+   469→   469→  const handleDiscard = () => {
+   470→   470→    if (!pack) return
+   471→   471→    try {
+   472→   472→      window.localStorage.removeItem(storageKeyFor(pack.id))
+   473→   473→    } catch {
+   474→   474→      /* noop */
+   475→   475→    }
+   476→   476→    setSavedInfo((info) => {
+   477→   477→      const next = { ...info }
+   478→   478→      delete next[pack.id]
+   479→   479→      return next
+   480→   480→    })
+   481→   481→    setSavedMeta(null)
+   482→   482→    setState(null)
+   483→   483→    setPhase('welcome')
+   484→   484→  }
+   485→   485→
+   486→   486→  const handleFinish = useCallback(() => {
+   487→   487→    if (!state || state.finished || !pack) return
+   488→   488→    const finished: ExamState = { ...state, finished: true, finishedAt: Date.now() }
+   489→   489→    setState(finished)
+   490→   490→    // Registra a tentativa no banco LOCAL (provas oficiais e simulados de PDF)
+   491→   491→    const total = pack.questions.length
+   492→   492→    const correct = pack.questions.filter((q) => finished.answers[q.id] === q.answer).length
+   493→   493→    const answered = pack.questions.filter((q) => finished.answers[q.id]).length
+   494→   494→    const bySubject = bySubjectFrom(pack.questions, finished.answers, subjectNameMap(pack))
+   495→   495→    void addLocalAttempt({
+   496→   496→      id: `att-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+   497→   497→      docId: pack.id,
+   498→   498→      name: finished.name,
+   499→   499→      title: pack.title,
+   500→   500→      bySubject,
+   501→   501→      mode: finished.mode,
+   502→   502→      correct,
+   503→   503→      answered,
+   504→   504→      total,
+   505→   505→      pct: total > 0 ? Math.round((correct / total) * 100) : 0,
+   506→   506→      timeUsedMs: (finished.finishedAt ?? Date.now()) - finished.startedAt,
+   507→   507→      createdAt: new Date().toISOString(),
+   508→   508→    }).then(() => void recomputeStats())
+   509→   509→    // CADERNO DE ERROS: toda questão respondida errada entra para revisão futura
+   510→   510→    const subjectNames = subjectNameMap(pack)
+   511→   511→    const missedAt = new Date().toISOString()
+   512→   512→    const wrongEntries: WrongQuestionInput[] = pack.questions
+   513→   513→      .filter((q) => finished.answers[q.id] && finished.answers[q.id] !== q.answer)
+   514→   514→      .map((q) => ({
+   515→   515→        id: `${pack.id}:${q.id}`,
+   516→   516→        docId: pack.id,
+   517→   517→        docTitle: pack.title,
+   518→   518→        questionId: q.id,
+   519→   519→        subject: subjectNames.get(q.subjectId) ?? q.subjectId,
+   520→   520→        statement: q.statement,
+   521→   521→        textRef: q.textRef,
+   522→   522→        textBlock: q.textRef ? pack.textBlocks[q.textRef] : undefined,
+   523→   523→        style: q.options.length <= 2 ? 'certo_errado' : 'multipla',
+   524→   524→        options: q.options,
+   525→   525→        answer: q.answer,
+   526→   526→        comment: q.comment,
+   527→   527→        lastMissedAt: missedAt,
+   528→   528→      }))
+   529→   529→    if (wrongEntries.length > 0) {
+   530→   530→      void recordWrongQuestions(wrongEntries).then(() => void refreshErrorCount())
+   531→   531→    }
+   532→   532→    setSavedMeta((m) => ({ finished: true, mode: m?.mode ?? 'prova', name: m?.name ?? '' }))
+   533→   533→    setPhase('results')
+   534→   534→  }, [state, pack, recomputeStats, refreshErrorCount])
+   535→   535→
+   536→   536→  const handleDelete = useCallback(
+   537→   537→    async (docId: string) => {
+   538→   538→      try {
+   539→   539→        await deleteLocalDocument(docId)
+   540→   540→      } catch {
+   541→   541→        /* segue */
+   542→   542→      }
+   543→   543→      try {
+   544→   544→        window.localStorage.removeItem(storageKeyFor(docId))
+   545→   545→      } catch {
+   546→   546→        /* noop */
+   547→   547→      }
+   548→   548→      void loadDocs()
+   549→   549→      void recomputeStats()
+   550→   550→    },
+   551→   551→    [loadDocs, recomputeStats]
+   552→   552→  )
+   553→   553→
+   554→   554→  // Heartbeat: o hook useSession já verifica /api/auth/me a cada 5 min e ao
+   555→   555→  // voltar para o app — valida sessão, dispositivo único e status de acesso.
+   556→   556→
+   557→   557→  // Splash enquanto carrega sessão/estado
+   558→   558→  if (!hydrated || session.loading) {
+   559→   559→    return (
+   560→   560→      <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-slate-50 text-slate-400">
+   561→   561→        <ShieldCheck className="h-10 w-10 animate-pulse text-amber-500" />
+   562→   562→        <p className="text-sm">Carregando simulados...</p>
+   563→   563→      </div>
+   564→   564→    )
+   565→   565→  }
+   566→   566→
+   567→   567→  const hasAccess =
+   568→   568→    session.authed && session.access && (session.access.status === 'trial' || session.access.status === 'active')
+   569→   569→
+   570→   570→  // Sem acesso: landing ou tela de conta (cadastro obrigatório)
+   571→   571→  if (!hasAccess) {
+   572→   572→    if (phase === 'access') {
+   573→   573→      return (
+   574→   574→        <AccessScreen
+   575→   575→          session={session}
+   576→   576→          initialMode={accessMode}
+   577→   577→          onBack={() => setPhase('landing')}
+   578→   578→          onDone={() => setPhase('library')}
+   579→   579→        />
+   580→   580→      )
+   581→   581→    }
+   582→   582→    return (
+   583→   583→      <LandingPage
+   584→   584→        onEnterAccess={() => {
+   585→   585→          setAccessMode('entrar')
+   586→   586→          setPhase('access')
+   587→   587→        }}
+   588→   588→        onStartTrial={() => {
+   589→   589→          setAccessMode('registrar')
+   590→   590→          setPhase('access')
+   591→   591→        }}
+   592→   592→      />
+   593→   593→    )
+   594→   594→  }
+   595→   595→
+   596→   596→  if (phase === 'access') {
+   597→   597→    // Conta autenticada gerenciando acesso/assinatura
+   598→   598→    return (
+   599→   599→      <AccessScreen
+   600→   600→        session={session}
+   601→   601→        initialMode={accessMode}
+   602→   602→        onBack={() => setPhase('library')}
+   603→   603→        onDone={() => setPhase('library')}
+   604→   604→      />
+   605→   605→    )
+   606→   606→  }
+   607→   607→
+   608→   608→  if (phase === 'library') {
+   609→   609→    return (
+   610→   610→      <LibraryScreen
+   611→   611→        docs={docs}
+   612→   612→        loading={docsLoading}
+   613→   613→        savedInfo={savedInfo}
+   614→   614→        onOpen={(id) => void openDoc(id)}
+   615→   615→        onDelete={(id) => void handleDelete(id)}
+   616→   616→        onUploadCompleted={handleUploadCompleted}
+   617→   617→        licenseBadge={{
+   618→   618→          active: session.access?.status === 'active',
+   619→   619→          trialDaysLeft: session.access?.status === 'trial' ? (session.access.trialDaysLeft ?? 0) : null,
+   620→   620→          trialEndsAt: session.access?.trialEndsAt ?? null,
+   621→   621→        }}
+   622→   622→        accountEmail={session.user?.email}
+   623→   623→        accountName={displayNameOf(session.user)}
+   624→   624→        stats={stats}
+   625→   625→        onManageAccess={() => setPhase('access')}
+   626→   626→        onOpenPerformance={(tab) => {
+   627→   627→          setPerfTab(tab)
+   628→   628→          setPhase('desempenho')
+   629→   629→        }}
+   630→   630→        onOpenPomodoro={() => setPhase('pomodoro')}
+   631→   631→        onOpenErrors={() => setPhase('erros')}
+   632→   632→        errorCount={errorCount}
+   633→   633→        onRandomSimulado={(opts) => void handleRandomSimulado(opts)}
+   634→   634→        weekAnswered={answeredThisWeek(allAttempts)}
+   635→   635→        onSignOut={() => void session.logout()}
+   636→   636→      />
+   637→   637→    )
+   638→   638→  }
+   639→   639→
+   640→   640→  if (phase === 'desempenho') {
+   641→   641→    return (
+   642→   642→      <PerformanceScreen
+   643→   643→        initialTab={perfTab}
+   644→   644→        stats={stats}
+   645→   645→        attempts={allAttempts}
+   646→   646→        accountName={displayNameOf(session.user)}
+   647→   647→        accountEmail={session.user?.email}
+   648→   648→        licenseBadge={{
+   649→   649→          active: session.access?.status === 'active',
+   650→   650→          trialDaysLeft: session.access?.status === 'trial' ? (session.access.trialDaysLeft ?? 0) : null,
+   651→   651→          trialEndsAt: session.access?.trialEndsAt ?? null,
+   652→   652→        }}
+   653→   653→        onBack={() => setPhase('library')}
+   654→   654→        onSubscribe={() => window.open(SITE.checkoutUrl, '_blank', 'noopener,noreferrer')}
+   655→   655→      />
+   656→   656→    )
+   657→   657→  }
+   658→   658→
+   659→   659→  if (phase === 'pomodoro') {
+   660→   660→    return <PomodoroScreen onBack={() => setPhase('library')} />
+   661→   661→  }
+   662→   662→
+   663→   663→  if (phase === 'erros') {
+   664→   664→    return <ErrorsScreen onBack={() => setPhase('library')} />
+   665→   665→  }
+   666→   666→
+   667→   667→  // Telas que dependem do pack
+   668→   668→  if (packLoading || !pack) {
+   669→   669→    return (
+   670→   670→      <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-slate-50 text-slate-400">
+   671→   671→        <Loader2 className="h-8 w-8 animate-spin text-amber-500" />
+   672→   672→        <p className="text-sm">Carregando simulado...</p>
+   673→   673→      </div>
+   674→   674→    )
+   675→   675→  }
+   676→   676→
+   677→   677→  if (phase === 'exam' && state && !state.finished) {
+   678→   678→    return (
+   679→   679→      <ExamScreen
+   680→   680→        pack={pack}
+   681→   681→        state={state}
+   682→   682→        onAnswer={(qid, key) => setState((s) => (s ? { ...s, answers: { ...s.answers, [qid]: key } } : s))}
+   683→   683→        onToggleMark={(qid) =>
+   684→   684→          setState((s) =>
+   685→   685→            s
+   686→   686→              ? {
+   687→   687→                  ...s,
+   688→   688→                  marked: s.marked.includes(qid) ? s.marked.filter((m) => m !== qid) : [...s.marked, qid],
+   689→   689→                }
+   690→   690→              : s
+   691→   691→          )
+   692→   692→        }
+   693→   693→        onNavigate={(index) =>
+   694→   694→          setState((s) => (s ? { ...s, current: Math.min(Math.max(index, 0), pack.questions.length - 1) } : s))
+   695→   695→        }
+   696→   696→        onFinish={handleFinish}
+   697→   697→      />
+   698→   698→    )
+   699→   699→  }
+   700→   700→
+   701→   701→  if (phase === 'results' && state?.finished) {
+   702→   702→    return (
+   703→   703→      <ResultsScreen
+   704→   704→        pack={pack}
+   705→   705→        state={state}
+   706→   706→        onReview={() => setPhase('review')}
+   707→   707→        licenseBadge={{
+   708→   708→          active: session.access?.status === 'active',
+   709→   709→          trialDaysLeft: session.access?.status === 'trial' ? (session.access.trialDaysLeft ?? 0) : null,
+   710→   710→          trialEndsAt: session.access?.trialEndsAt ?? null,
+   711→   711→        }}
+   712→   712→        onSubscribe={() => window.open(SITE.checkoutUrl, '_blank', 'noopener,noreferrer')}
+   713→   713→        accountName={displayNameOf(session.user)}
+   714→   714→        onRedo={() => {
+   715→   715→          try {
+   716→   716→            window.localStorage.removeItem(storageKeyFor(pack.id))
+   717→   717→          } catch {
+   718→   718→            /* noop */
+   719→   719→          }
+   720→   720→          setSavedInfo((info) => {
+   721→   721→            const next = { ...info }
+   722→   722→            delete next[pack.id]
+   723→   723→            return next
+   724→   724→          })
+   725→   725→          setSavedMeta(null)
+   726→   726→          setState(null)
+   727→   727→          setPhase('welcome')
+   728→   728→        }}
+   729→   729→        onBackToStart={() => setPhase('welcome')}
+   730→   730→      />
+   731→   731→    )
+   732→   732→  }
+   733→   733→
+   734→   734→  if (phase === 'review' && state?.finished) {
+   735→   735→    return (
+   736→   736→      <ReviewScreen
+   737→   737→        pack={pack}
+   738→   738→        answers={state.answers}
+   739→   739→        marked={state.marked}
+   740→   740→        onBack={() => setPhase('results')}
+   741→   741→      />
+   742→   742→    )
+   743→   743→  }
+   744→   744→
+   745→   745→  return (
+   746→   746→    <WelcomeScreen
+   747→   747→      pack={pack}
+   748→   748→      defaultName={savedMeta?.name ?? ''}
+   749→   749→      defaultMode={savedMeta?.mode ?? 'prova'}
+   750→   750→      hasSaved={Boolean(savedMeta)}
+   751→   751→      savedFinished={Boolean(savedMeta?.finished)}
+   752→   752→      attempts={attempts}
+   753→   753→      onStart={handleStart}
+   754→   754→      onContinue={handleContinue}
+   755→   755→      onViewResults={handleViewResults}
+   756→   756→      onDiscard={handleDiscard}
+   757→   757→      onBack={backToLibrary}
+   758→   758→    />
+   759→   759→  )
+   760→   760→}
+   761→   761→

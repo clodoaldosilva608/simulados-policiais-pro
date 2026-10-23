@@ -3,8 +3,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   AlertTriangle,
+  Bot,
   CheckCircle2,
+  ExternalLink,
   FileText,
+  KeyRound,
   Loader2,
   Sparkles,
   Upload,
@@ -31,6 +34,7 @@ import {
   type LocalDocStyle,
 } from '@/lib/local-db'
 import { questionsPerChunk, type GeneratedQuestion } from '@/lib/question-gen'
+import { getAiSettings, type AiSettings } from '@/lib/ai-settings'
 import type { Question, TextBlock } from '@/data/types'
 
 interface UploadDialogProps {
@@ -41,13 +45,15 @@ interface UploadDialogProps {
   /** Arquivo pré-selecionado via drag & drop */
   initialFile: File | null
   onCompleted: () => void
+  /** Abre a aba Configurações da IA (colar/criar a chave) */
+  onOpenAiSettings?: () => void
 }
 
 type Step = 'form' | 'extracting' | 'ocr' | 'generating' | 'done' | 'error'
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024 // 50 MB
 
-export function UploadDialog({ open, onOpenChange, resumeDocId, initialFile, onCompleted }: UploadDialogProps) {
+export function UploadDialog({ open, onOpenChange, resumeDocId, initialFile, onCompleted, onOpenAiSettings }: UploadDialogProps) {
   const { toast } = useToast()
 
   const [step, setStep] = useState<Step>('form')
@@ -64,6 +70,9 @@ export function UploadDialog({ open, onOpenChange, resumeDocId, initialFile, onC
   const [errorMsg, setErrorMsg] = useState('')
   const cancelled = useRef(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  // Configurações da IA lidas quando o dialog abre (snapshot para o processamento)
+  const aiSettingsRef = useRef<AiSettings | null>(null)
+  const [hasAiKey, setHasAiKey] = useState<boolean | null>(null)
 
   /** Converte questões geradas pela IA no formato do app e acumula no doc */
   const mergeGenerated = useCallback(
@@ -111,6 +120,18 @@ export function UploadDialog({ open, onOpenChange, resumeDocId, initialFile, onC
       let current = { ...doc }
       const style = doc.style
       const count = questionsPerChunk(style)
+      const ai = aiSettingsRef.current
+      // Campos da IA do aluno enviados ao servidor (BYOK — nunca fica no servidor)
+      const aiPayload = ai?.apiKey
+        ? {
+            apiKey: ai.apiKey,
+            model: ai.model,
+            temperature: ai.temperature,
+            persona: ai.persona,
+            commentDetail: ai.commentDetail,
+            instructions: ai.instructions,
+          }
+        : {}
       const licenseCode =
         typeof window !== 'undefined' ? window.localStorage.getItem('spp-license-v1') : null
       let accessHeader: Record<string, string> = {}
@@ -123,6 +144,7 @@ export function UploadDialog({ open, onOpenChange, resumeDocId, initialFile, onC
         /* sem código */
       }
 
+      let firstServerError = ''
       while (!cancelled.current && current.chunksDone < current.chunksTotal) {
         const index = current.chunksDone
         const chunk = current.chunks[index]
@@ -130,11 +152,15 @@ export function UploadDialog({ open, onOpenChange, resumeDocId, initialFile, onC
           const res = await fetch('/api/generate', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', ...accessHeader },
-            body: JSON.stringify({ chunk, style, count }),
+            body: JSON.stringify({ chunk, style, count, ...aiPayload }),
           })
           const data = (await res.json()) as { questions?: GeneratedQuestion[]; error?: string }
           if (res.ok && Array.isArray(data.questions) && data.questions.length > 0) {
             current = mergeGenerated(current, index, data.questions)
+          } else if (data?.error) {
+            // Guarda o primeiro erro real do servidor (ex.: chave recusada) para
+            // mostrar uma mensagem acionável em vez de "falha genérica".
+            if (!firstServerError) firstServerError = data.error
           }
           // Bloco com falha é pulado e o fluxo continua
         } catch {
@@ -161,6 +187,7 @@ export function UploadDialog({ open, onOpenChange, resumeDocId, initialFile, onC
           ...current,
           status: 'error',
           error:
+            firstServerError ||
             'Não foi possível gerar questões com a IA neste momento. Verifique sua conexão e tente novamente em alguns minutos.',
         }
         try {
@@ -217,6 +244,8 @@ export function UploadDialog({ open, onOpenChange, resumeDocId, initialFile, onC
     }
     cancelled.current = false
     const timer = window.setTimeout(() => {
+      aiSettingsRef.current = getAiSettings()
+      setHasAiKey(Boolean(aiSettingsRef.current.apiKey))
       setErrorMsg('')
       if (resumeDocId) {
         setFile(null)
@@ -267,7 +296,7 @@ export function UploadDialog({ open, onOpenChange, resumeDocId, initialFile, onC
       buffer: Uint8Array,
       baseDoc: LocalDocument,
       accessHeader: Record<string, string>,
-    ): Promise<{ text: string; totalPages: number; unavailable: boolean } | null> => {
+    ): Promise<{ text: string; totalPages: number; unavailable: boolean; serverError: string } | null> => {
       setStep('ocr')
       const pdf = await openPdfForRender(buffer)
       const totalPages = pdf.numPages
@@ -278,6 +307,7 @@ export function UploadDialog({ open, onOpenChange, resumeDocId, initialFile, onC
       const BATCH = 3
       let ocrText = ''
       let unavailable = false
+      let ocrServerError = ''
       for (let start = 1; start <= totalPages; start += BATCH) {
         if (cancelled.current) return null
         const end = Math.min(start + BATCH - 1, totalPages)
@@ -292,11 +322,20 @@ export function UploadDialog({ open, onOpenChange, resumeDocId, initialFile, onC
             const res = await fetch('/api/transcribe', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json', ...accessHeader },
-              body: JSON.stringify({ images: dataUrls }),
+              body: JSON.stringify({
+                images: dataUrls,
+                ...(aiSettingsRef.current?.apiKey
+                  ? { apiKey: aiSettingsRef.current.apiKey, model: aiSettingsRef.current.model }
+                  : {}),
+              }),
             })
             const data = (await res.json()) as { text?: string; error?: string }
             if (res.ok && typeof data.text === 'string' && data.text.trim()) batchText = data.text
-            else if (res.status === 503 || res.status === 401) unavailable = true
+            else {
+              if (res.status === 503 || res.status === 401 || res.status === 403 || res.status === 429)
+                unavailable = true
+              if (!ocrServerError && data?.error) ocrServerError = data.error
+            }
           } catch {
             /* rede falhou: tenta de novo */
           }
@@ -310,7 +349,7 @@ export function UploadDialog({ open, onOpenChange, resumeDocId, initialFile, onC
         }
         if (!batchText && start === 1) break // 1ª leva falhou (ex.: IA indisponível): não insiste nas demais
       }
-      return { text: ocrText.trim(), totalPages, unavailable }
+      return { text: ocrText.trim(), totalPages, unavailable, serverError: ocrServerError }
     },
     [],
   )
@@ -371,9 +410,11 @@ export function UploadDialog({ open, onOpenChange, resumeDocId, initialFile, onC
           const failed: LocalDocument = {
             ...baseDoc,
             status: 'error',
-            error: ocr.unavailable
-              ? 'O serviço de leitura por IA está temporariamente indisponível. Tente novamente em alguns minutos.'
-              : 'Não foi possível ler o conteúdo deste PDF nem com a leitura por IA. Verifique se o arquivo contém texto legível e tente novamente.',
+            error:
+              ocr.serverError ||
+              (ocr.unavailable
+                ? 'O serviço de leitura por IA está temporariamente indisponível. Tente novamente em alguns minutos.'
+                : 'Não foi possível ler o conteúdo deste PDF nem com a leitura por IA. Verifique se o arquivo contém texto legível e tente novamente.'),
           }
           try {
             await putLocalDocument(failed)
@@ -574,6 +615,49 @@ export function UploadDialog({ open, onOpenChange, resumeDocId, initialFile, onC
               </div>
             </div>
 
+            {/* Banner sem chave de IA: orienta criar/colar a chave gratuita */}
+            {hasAiKey === false && (
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+                <div className="flex items-start gap-2.5">
+                  <KeyRound className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
+                  <div className="min-w-0">
+                    <p className="text-sm font-bold text-amber-900">Conecte a sua chave de IA (grátis)</p>
+                    <p className="mt-0.5 text-xs leading-relaxed text-amber-800">
+                      Para transformar este PDF em questões, use a sua chave gratuita do Google AI Studio — leva 2
+                      minutos e fica salva apenas neste aparelho.
+                    </p>
+                    <div className="mt-2.5 flex flex-col gap-2 sm:flex-row">
+                      <Button
+                        size="sm"
+                        onClick={() =>
+                          window.open('https://aistudio.google.com/apikey', '_blank', 'noopener,noreferrer')
+                        }
+                        className="bg-slate-900 font-bold text-white hover:bg-slate-800"
+                      >
+                        <ExternalLink className="mr-1.5 h-3.5 w-3.5" /> Criar chave grátis
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          onOpenChange(false)
+                          onOpenAiSettings?.()
+                        }}
+                        className="border-amber-300 bg-white font-bold text-amber-900 hover:bg-amber-100"
+                      >
+                        <Bot className="mr-1.5 h-3.5 w-3.5" /> Colar minha chave
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+            {hasAiKey === true && (
+              <p className="flex items-center gap-1.5 text-xs font-medium text-emerald-700">
+                <CheckCircle2 className="h-3.5 w-3.5" /> IA pronta usando a sua chave do Google AI Studio
+              </p>
+            )}
+
             <Button
               onClick={() => void handleGenerate()}
               disabled={!file || busy}
@@ -690,6 +774,18 @@ export function UploadDialog({ open, onOpenChange, resumeDocId, initialFile, onC
                   className="flex-1 bg-slate-900 font-bold text-white hover:bg-slate-800"
                 >
                   Tentar novamente
+                </Button>
+              )}
+              {(errorMsg.toLowerCase().includes('chave') || hasAiKey === false) && (
+                <Button
+                  onClick={() => {
+                    onOpenChange(false)
+                    onOpenAiSettings?.()
+                  }}
+                  variant="outline"
+                  className="flex-1 border-amber-300 font-bold text-amber-900 hover:bg-amber-50"
+                >
+                  <Bot className="mr-1.5 h-4 w-4" /> Configurações da IA
                 </Button>
               )}
               <Button variant="outline" onClick={() => onOpenChange(false)} className="flex-1 border-slate-300">

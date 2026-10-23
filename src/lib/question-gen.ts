@@ -141,11 +141,27 @@ function normalizeQuestion(
   }
 }
 
-export function buildPrompt(chunk: string, style: QuestionStyle, count: number): string {
+export function buildPrompt(
+  chunk: string,
+  style: QuestionStyle,
+  count: number,
+  opts?: { commentDetail?: string; instructions?: string },
+): string {
   const styleRule =
     style === 'certo_errado'
       ? `Elabore ${count} AFIRMATIVAS no estilo Certo/Errado (banca CEBRASPE): cada questão é uma afirmação que o candidato julga como Certa ou Errada. O campo "options" deve conter exatamente duas alternativas: [{"key":"a","html":"Certo"},{"key":"b","html":"Errado"}] e o "answer" deve ser "a" (Certo) ou "b" (Errado). Varie entre afirmativas certas e erradas.`
       : `Elabore ${count} questões de múltipla escolha com exatamente 5 alternativas (a–e), apenas UMA correta. Distratores devem ser plausíveis e baseados em confusões comuns sobre o conteúdo.`
+
+  const commentRule =
+    opts?.commentDetail === 'resumido'
+      ? 'O campo "comment" deve ter 1 frase curta e direta com o essencial para entender a resposta.'
+      : opts?.commentDetail === 'detalhado'
+        ? 'O campo "comment" deve ser detalhado (4 a 6 frases): explique por que a correta é correta E por que as principais alternativas erradas estão erradas, citando a base do texto.'
+        : 'O campo "comment" deve explicar por que a alternativa correta é correta, citando a base do texto (2 a 4 frases).'
+
+  const extra = opts?.instructions?.trim()
+    ? `\nINSTRUÇÕES ESPECIAIS DO ALUNO (prioridade alta, mas nunca ignore as regras acima):\n- ${opts.instructions.trim().slice(0, 500).replace(/\n+/g, '\n- ')}`
+    : ''
 
   return `Você é um elaborador profissional de questões para concursos públicos brasileiros. Com base EXCLUSIVAMENTE no CONTEUDO abaixo, elabore questões inéditas de alta qualidade que ajudem um estudante a fixar o conteúdo.
 
@@ -154,10 +170,10 @@ ${styleRule}
 REGRAS IMPORTANTES:
 - Base-se somente no conteúdo fornecido; não invente leis, números ou fatos que não estejam no texto.
 - Cada questão deve ter um "topic" curto identificando o assunto (ex.: "Direito Constitucional", "Estatística", "Crédito Rural").
-- O campo "comment" deve explicar por que a alternativa correta é correta, citando a base do texto (2 a 4 frases).
+- ${commentRule}
 - Se um trecho do conteúdo for um texto de apoio longo necessário para as questões (ex.: caso, fragmento, tabela descrita), inclua "textBlock" com "title" e "paragraphs" (array de strings); caso contrário use null.
 - Enunciados claros, com no mínimo 15 caracteres, sem referências como "acima" ou "no texto anterior".
-- NÃO copie literalmente frases do conteúdo como enunciado; reformule.
+- NÃO copie literalmente frases do conteúdo como enunciado; reformule.${extra}
 
 FORMATO DE RESPOSTA: retorne APENAS um JSON válido, sem markdown, sem texto antes ou depois, no formato:
 {"questions":[{"topic":"...","statement":"...","textBlock":null,"options":[{"key":"a","html":"..."},...],"answer":"a","comment":"..."}]}

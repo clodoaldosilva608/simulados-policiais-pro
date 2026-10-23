@@ -1,0 +1,761 @@
+     1→'use client'
+     2→
+     3→import { useCallback, useEffect, useState } from 'react'
+     4→import { Loader2, GraduationCap, ShieldCheck } from 'lucide-react'
+     5→import { LandingPage } from '@/components/landing/landing-page'
+     6→import { AccessScreen } from '@/components/simulado/access-screen'
+     7→import { LibraryScreen, type SavedInfo, type DashboardStats } from '@/components/simulado/library-screen'
+     8→import { PerformanceScreen, type PerfTab } from '@/components/simulado/performance-screen'
+     9→import { PomodoroScreen } from '@/components/simulado/pomodoro-screen'
+    10→import { ErrorsScreen } from '@/components/simulado/errors-screen'
+    11→import { WelcomeScreen, type AttemptInfo } from '@/components/simulado/welcome-screen'
+    12→import { ExamScreen } from '@/components/simulado/exam-screen'
+    13→import { ResultsScreen } from '@/components/simulado/results-screen'
+    14→import { ReviewScreen } from '@/components/simulado/review-screen'
+    15→import {
+    16→  STATIC_PACKS,
+    17→  getStaticPack,
+    18→  type DocumentSummary,
+    19→  type ExamMode,
+    20→  type ExamState,
+    21→  type OptionKey,
+    22→  type SimuladoPack,
+    23→} from '@/data/simulado'
+    24→import { useSession } from '@/lib/session'
+    25→import { SITE } from '@/config/site'
+    26→import {
+    27→  listLocalDocuments,
+    28→  getLocalDocument,
+    29→  deleteLocalDocument,
+    30→  addLocalAttempt,
+    31→  listLocalAttempts,
+    32→  listAllLocalAttempts,
+    33→  hasAttemptWithId,
+    34→  recordWrongQuestions,
+    35→  countDueWrongQuestions,
+    36→  localDocToPack,
+    37→  type LocalAttempt,
+    38→  type WrongQuestionInput,
+    39→} from '@/lib/local-db'
+    40→import { buildRandomPack, type RandomFormat } from '@/lib/random-simulado'
+    41→import { answeredThisWeek } from '@/lib/weekly-goal'
+    42→
+    43→function statsFromAttempts(attempts: LocalAttempt[]): DashboardStats {
+    44→  // Dedupe defensivo: a mesma prova concluída no mesmo instante (±60s) conta
+    45→  // uma única vez — protege o painel de qualquer duplicidade histórica.
+    46→  const ordered = [...attempts].sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1))
+    47→  const kept: { docId: string; t: number }[] = []
+    48→  const unique: LocalAttempt[] = []
+    49→  for (const a of ordered) {
+    50→    const t = new Date(a.createdAt).getTime()
+    51→    if (kept.some((k) => k.docId === a.docId && Math.abs(k.t - t) < 60_000)) continue
+    52→    kept.push({ docId: a.docId, t })
+    53→    unique.push(a)
+    54→  }
+    55→  let answered = 0
+    56→  let correct = 0
+    57→  const subjects = new Map<string, { correct: number; answered: number }>()
+    58→  for (const a of unique) {
+    59→    const ans = typeof a.answered === 'number' ? a.answered : a.total
+    60→    answered += Math.min(Math.max(ans, 0), a.total)
+    61→    correct += Math.min(Math.max(a.correct, 0), a.total)
+    62→    // Agrega métricas por disciplina (tentativas antigas podem não ter bySubject)
+    63→    if (a.bySubject) {
+    64→      for (const [name, agg] of Object.entries(a.bySubject)) {
+    65→        if (!agg || typeof agg.answered !== 'number') continue
+    66→        let acc = subjects.get(name)
+    67→        if (!acc) {
+    68→          acc = { correct: 0, answered: 0 }
+    69→          subjects.set(name, acc)
+    70→        }
+    71→        acc.answered += Math.max(0, agg.answered)
+    72→        acc.correct += Math.min(Math.max(agg.correct ?? 0, 0), agg.answered)
+    73→      }
+    74→    }
+    75→  }
+    76→  const wrong = Math.max(0, answered - correct)
+    77→  const pct = answered > 0 ? Math.round((correct / answered) * 100) : 0
+    78→  // Lista por disciplina: mais respondidas primeiro; empate → menor aproveitamento
+    79→  const subjectStats = [...subjects.entries()]
+    80→    .map(([name, agg]) => ({
+    81→      name,
+    82→      correct: agg.correct,
+    83→      answered: agg.answered,
+    84→      pct: agg.answered > 0 ? Math.round((agg.correct / agg.answered) * 100) : 0,
+    85→    }))
+    86→    .sort((x, y) => y.answered - x.answered || x.pct - y.pct || x.name.localeCompare(y.name))
+    87→  return { attempts: unique.length, answered, correct, wrong, pct, subjects: subjectStats }
+    88→}
+    89→
+    90→/** Nome para exibição: nome cadastrado ou deriva do e-mail */
+    91→function displayNameOf(user: { name?: string; email?: string } | null | undefined): string {
+    92→  const n = user?.name?.trim()
+    93→  if (n) return n.split(/\s+/)[0]
+    94→  const prefix = (user?.email ?? '').split('@')[0] ?? ''
+    95→  const words = prefix
+    96→    .replace(/[._\-+0-9]+/g, ' ')
+    97→    .trim()
+    98→    .split(/\s+/)
+    99→    .filter(Boolean)
+   100→  if (words.length === 0) return 'Aluno'
+   101→  return words
+   102→    .slice(0, 2)
+   103→    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+   104→    .join(' ')
+   105→}
+   106→
+   107→type Phase = 'landing' | 'access' | 'library' | 'desempenho' | 'pomodoro' | 'erros' | 'welcome' | 'exam' | 'results' | 'review'
+   108→
+   109→const storageKeyFor = (docId: string) => `simulado-${docId}`
+   110→
+   111→function freshState(name: string, mode: ExamMode): ExamState {
+   112→  return {
+   113→    name,
+   114→    mode,
+   115→    startedAt: Date.now(),
+   116→    finished: false,
+   117→    finishedAt: null,
+   118→    current: 0,
+   119→    answers: {},
+   120→    marked: [],
+   121→  }
+   122→}
+   123→
+   124→/** Mapa subjectId → nome de exibição da disciplina (packs oficiais) */
+   125→function subjectNameMap(pack: SimuladoPack): Map<string, string> {
+   126→  const map = new Map<string, string>()
+   127→  for (const s of pack.subjects) map.set(s.id, s.name || s.id)
+   128→  return map
+   129→}
+   130→
+   131→/**
+   132→ * Desempenho por disciplina de uma tentativa (chave = nome exibido).
+   133→ * Disciplinas de PDFs já vêm com subjectId = nome — aí o mapa é nulo.
+   134→ */
+   135→function bySubjectFrom(
+   136→  questions: { id: string; answer: OptionKey; subjectId: string }[],
+   137→  answers: Record<string, OptionKey>,
+   138→  subjectNames: Map<string, string> | null,
+   139→): Record<string, { correct: number; answered: number }> {
+   140→  const out: Record<string, { correct: number; answered: number }> = {}
+   141→  for (const q of questions) {
+   142→    const given = answers[q.id]
+   143→    if (!given) continue
+   144→    const name = subjectNames?.get(q.subjectId) ?? q.subjectId
+   145→    const agg = (out[name] ??= { correct: 0, answered: 0 })
+   146→    agg.answered += 1
+   147→    if (given === q.answer) agg.correct += 1
+   148→  }
+   149→  return out
+   150→}
+   151→
+   152→/**
+   153→ * Migração: estados finalizados no localStorage (provas oficiais e PDFs)
+   154→ * que ainda não viraram tentativa no banco local ganham uma tentativa —
+   155→ * assim o painel de métricas inclui o histórico anterior à atualização.
+   156→ */
+   157→async function migrateLegacyFinishedStates(docs: { id: string; title: string }[]): Promise<void> {
+   158→  if (typeof window === 'undefined') return
+   159→  const titles = new Map<string, string>()
+   160→  for (const p of STATIC_PACKS) titles.set(p.id, p.title)
+   161→  for (const d of docs) titles.set(d.id, d.title)
+   162→  for (const docId of titles.keys()) {
+   163→    try {
+   164→      const raw = window.localStorage.getItem(storageKeyFor(docId))
+   165→      if (!raw) continue
+   166→      const parsed = JSON.parse(raw) as Partial<ExamState>
+   167→      if (!parsed?.finished || typeof parsed.finishedAt !== 'number') continue
+   168→      const attemptId = `att-mig-${docId}-${parsed.finishedAt}`
+   169→      if (await hasAttemptWithId(attemptId)) continue
+   170→      // Já existe tentativa registrada nesta conclusão? (ex.: gravação feita
+   171→      // ao finalizar o simulado) — evita contar a mesma prova duas vezes.
+   172→      const existing = await listLocalAttempts(docId)
+   173→      const alreadyRecorded = existing.some(
+   174→        (a) => Math.abs(new Date(a.createdAt).getTime() - parsed.finishedAt!) < 60_000,
+   175→      )
+   176→      if (alreadyRecorded) continue
+   177→      let questions: { id: string; answer: OptionKey; subjectId: string }[] | null = null
+   178→      let subjectNames: Map<string, string> | null = null
+   179→      const staticPack = getStaticPack(docId)
+   180→      if (staticPack) {
+   181→        questions = staticPack.questions
+   182→        subjectNames = subjectNameMap(staticPack)
+   183→      } else {
+   184→        const doc = await getLocalDocument(docId)
+   185→        if (doc) questions = doc.questions // PDFs: subjectId já é o nome
+   186→      }
+   187→      if (!questions || questions.length === 0) continue
+   188→      const answers = parsed.answers ?? {}
+   189→      const correct = questions.filter((q) => answers[q.id] === q.answer).length
+   190→      const answered = questions.filter((q) => answers[q.id]).length
+   191→      const total = questions.length
+   192→      await addLocalAttempt({
+   193→        id: attemptId,
+   194→        docId,
+   195→        name: parsed.name ?? '',
+   196→        title: titles.get(docId),
+   197→        bySubject: bySubjectFrom(questions, answers, subjectNames),
+   198→        mode: parsed.mode === 'estudo' ? 'estudo' : 'prova',
+   199→        correct,
+   200→        answered,
+   201→        total,
+   202→        pct: total > 0 ? Math.round((correct / total) * 100) : 0,
+   203→        timeUsedMs: Math.max(0, parsed.finishedAt - (parsed.startedAt ?? parsed.finishedAt)),
+   204→        createdAt: new Date(parsed.finishedAt).toISOString(),
+   205→      })
+   206→    } catch {
+   207→      /* migração é best-effort */
+   208→    }
+   209→  }
+   210→}
+   211→
+   212→function loadSaved(docId: string, maxIndex: number): ExamState | null {
+   213→  if (typeof window === 'undefined') return null
+   214→  try {
+   215→    const raw = window.localStorage.getItem(storageKeyFor(docId))
+   216→    if (!raw) return null
+   217→    const parsed = JSON.parse(raw) as Partial<ExamState>
+   218→    if (!parsed || typeof parsed.startedAt !== 'number' || (parsed.mode !== 'prova' && parsed.mode !== 'estudo')) {
+   219→      return null
+   220→    }
+   221→    return {
+   222→      name: parsed.name ?? '',
+   223→      mode: parsed.mode,
+   224→      startedAt: parsed.startedAt,
+   225→      finished: Boolean(parsed.finished),
+   226→      finishedAt: parsed.finishedAt ?? null,
+   227→      current: Math.min(Math.max(parsed.current ?? 0, 0), Math.max(0, maxIndex)),
+   228→      answers: parsed.answers ?? {},
+   229→      marked: Array.isArray(parsed.marked) ? parsed.marked : [],
+   230→    }
+   231→  } catch {
+   232→    return null
+   233→  }
+   234→}
+   235→
+   236→function peekSavedMeta(docId: string): SavedInfo | null {
+   237→  if (typeof window === 'undefined') return null
+   238→  try {
+   239→    const raw = window.localStorage.getItem(storageKeyFor(docId))
+   240→    if (!raw) return null
+   241→    const parsed = JSON.parse(raw) as Partial<ExamState>
+   242→    if (!parsed || typeof parsed.startedAt !== 'number') return null
+   243→    return { finished: Boolean(parsed.finished) }
+   244→  } catch {
+   245→    return null
+   246→  }
+   247→}
+   248→
+   249→export default function Home() {
+   250→  const session = useSession()
+   251→  const [hydrated, setHydrated] = useState(false)
+   252→  const [phase, setPhase] = useState<Phase>('library')
+   253→  const [accessMode, setAccessMode] = useState<'registrar' | 'entrar'>('registrar')
+   254→
+   255→  // Biblioteca (simulados de PDF salvos localmente)
+   256→  const [docs, setDocs] = useState<DocumentSummary[]>([])
+   257→  const [docsLoading, setDocsLoading] = useState(true)
+   258→  const [savedInfo, setSavedInfo] = useState<Record<string, SavedInfo>>({})
+   259→
+   260→  // Métricas do painel do aluno (acertos/erros em todos os simulados)
+   261→  const [stats, setStats] = useState<DashboardStats | null>(null)
+   262→  // Histórico completo (tela Meu desempenho → aba Histórico)
+   263→  const [allAttempts, setAllAttempts] = useState<LocalAttempt[]>([])
+   264→  const [errorCount, setErrorCount] = useState(0)
+   265→  const [perfTab, setPerfTab] = useState<PerfTab>('resumo')
+   266→
+   267→  // Simulado ativo
+   268→  const [pack, setPack] = useState<SimuladoPack | null>(null)
+   269→  const [packLoading, setPackLoading] = useState(false)
+   270→  const [attempts, setAttempts] = useState<AttemptInfo[]>([])
+   271→  const [state, setState] = useState<ExamState | null>(null)
+   272→  const [savedMeta, setSavedMeta] = useState<{ finished: boolean; mode: ExamMode; name: string } | null>(null)
+   273→
+   274→  const refreshSavedInfo = useCallback((list: { id: string }[]) => {
+   275→    const info: Record<string, SavedInfo> = {}
+   276→    for (const p of STATIC_PACKS) {
+   277→      const meta = peekSavedMeta(p.id)
+   278→      if (meta) info[p.id] = meta
+   279→    }
+   280→    for (const d of list) {
+   281→      const meta = peekSavedMeta(d.id)
+   282→      if (meta) info[d.id] = meta
+   283→    }
+   284→    setSavedInfo(info)
+   285→  }, [])
+   286→
+   287→  // Auto-save do estado em andamento
+   288→  useEffect(() => {
+   289→    if (!state || !pack) return
+   290→    try {
+   291→      window.localStorage.setItem(storageKeyFor(pack.id), JSON.stringify(state))
+   292→    } catch {
+   293→      /* armazenamento indisponível */
+   294→    }
+   295→  }, [state, pack])
+   296→
+   297→  const loadDocs = useCallback(async () => {
+   298→    try {
+   299→      const list = await listLocalDocuments()
+   300→      setDocs(list)
+   301→      refreshSavedInfo(list)
+   302→    } catch {
+   303→      setDocs([])
+   304→    } finally {
+   305→      setDocsLoading(false)
+   306→    }
+   307→  }, [refreshSavedInfo])
+   308→
+   309→  const recomputeStats = useCallback(async () => {
+   310→    try {
+   311→      const all = await listAllLocalAttempts()
+   312→      // Mais recentes primeiro (histórico)
+   313→      const desc = [...all].sort((a, b) => (a.createdAt > b.createdAt ? -1 : 1))
+   314→      setAllAttempts(desc)
+   315→      setStats(statsFromAttempts(desc))
+   316→    } catch {
+   317→      /* métricas são opcionais */
+   318→    }
+   319→  }, [])
+   320→
+   321→  /** Contador do caderno de erros (badge do menu = questões para revisar HOJE) */
+   322→  const refreshErrorCount = useCallback(() => {
+   323→    void countDueWrongQuestions()
+   324→      .then((count) => setErrorCount(count))
+   325→      .catch(() => setErrorCount(0))
+   326→  }, [])
+   327→
+   328→  useEffect(() => {
+   329→    refreshErrorCount()
+   330→  }, [refreshErrorCount])
+   331→
+   332→  // Métricas: migra estados antigos e soma todas as tentativas do aparelho
+   333→  useEffect(() => {
+   334→    let alive = true
+   335→    void (async () => {
+   336→      try {
+   337→        const list = docs.length > 0 ? docs : await listLocalDocuments()
+   338→        await migrateLegacyFinishedStates(list)
+   339→        const all = await listAllLocalAttempts()
+   340→        if (!alive) return
+   341→        const desc = [...all].sort((a, b) => (a.createdAt > b.createdAt ? -1 : 1))
+   342→        setAllAttempts(desc)
+   343→        setStats(statsFromAttempts(desc))
+   344→      } catch {
+   345→        /* métricas são opcionais */
+   346→      }
+   347→    })()
+   348→    return () => {
+   349→      alive = false
+   350→    }
+   351→  }, [docs])
+   352→
+   353→  // Fase inicial: sessão válida com acesso → biblioteca; conta sem acesso →
+   354→  // tela de conta/ativação; sem sessão → landing.
+   355→  // IMPORTANTE: NÃO força 'access' → 'library' — quando o aluno abre Minha
+   356→  // conta pelo menu, o heartbeat (a cada 5 min) atualiza session.access e
+   357→  // antes isso EXPULSAVA a pessoa da tela antes de ver seus dados. A volta
+   358→  // da tela de acesso é sempre manual (Voltar / Entrar).
+   359→  useEffect(() => {
+   360→    if (session.loading) return
+   361→    setHydrated(true)
+   362→    const has =
+   363→      session.authed &&
+   364→      session.access &&
+   365→      (session.access.status === 'trial' || session.access.status === 'active')
+   366→    if (has) {
+   367→      // só resgata quem ficou preso na landing — não mexe em acesso/desempenho
+   368→      setPhase((p) => (p === 'landing' ? 'library' : p))
+   369→    } else if (session.authed) {
+   370→      // conta autenticada sem acesso: só pode navegar landing/acesso
+   371→      setPhase((p) =>
+   372→        p === 'library' || p === 'desempenho' || p === 'welcome' || p === 'exam' || p === 'results' || p === 'review'
+   373→          ? 'access'
+   374→          : p,
+   375→      )
+   376→    } else {
+   377→      setPhase((p) => (p === 'landing' || p === 'access' ? p : 'landing'))
+   378→    }
+   379→  }, [session.loading, session.authed, session.access])
+   380→
+   381→  useEffect(() => {
+   382→    void loadDocs()
+   383→  }, [loadDocs])
+   384→
+   385→  const handleUploadCompleted = useCallback(() => {
+   386→    void loadDocs()
+   387→  }, [loadDocs])
+   388→
+   389→  const openDoc = useCallback(async (docId: string) => {
+   390→    const staticPack = getStaticPack(docId)
+   391→    if (staticPack) {
+   392→      setPack(staticPack)
+   393→      setAttempts([])
+   394→      const saved = loadSaved(docId, staticPack.questions.length - 1)
+   395→      setSavedMeta(saved ? { finished: saved.finished, mode: saved.mode, name: saved.name } : null)
+   396→      setPhase('welcome')
+   397→      return
+   398→    }
+   399→    setPackLoading(true)
+   400→    setPhase('welcome') // exibe carregamento na transição
+   401→    try {
+   402→      const doc = await getLocalDocument(docId)
+   403→      if (!doc) throw new Error('Simulado não encontrado')
+   404→      const built = localDocToPack(doc)
+   405→      setPack(built)
+   406→      const saved = loadSaved(built.id, built.questions.length - 1)
+   407→      setSavedMeta(saved ? { finished: saved.finished, mode: saved.mode, name: saved.name } : null)
+   408→      const localAttempts = await listLocalAttempts(doc.id)
+   409→      setAttempts(localAttempts)
+   410→    } catch {
+   411→      setPack(null)
+   412→      setPhase('library')
+   413→    } finally {
+   414→      setPackLoading(false)
+   415→    }
+   416→  }, [])
+   417→
+   418→  const backToLibrary = useCallback(() => {
+   419→    setPack(null)
+   420→    setState(null)
+   421→    setSavedMeta(null)
+   422→    setPhase('library')
+   423→    void loadDocs()
+   424→  }, [loadDocs])
+   425→
+   426→  /** SIMULADO ALEATÓRIO: sorteia uma prova de todas as fontes e abre */
+   427→  const handleRandomSimulado = useCallback(async (opts: { count: number; format: RandomFormat }) => {
+   428→    setPackLoading(true)
+   429→    try {
+   430→      const generated = await buildRandomPack(opts)
+   431→      if (!generated) return
+   432→      setPack(generated)
+   433→      setAttempts([])
+   434→      setSavedMeta(null)
+   435→      setState(null)
+   436→      setPhase('welcome')
+   437→    } catch {
+   438→      /* sorteio é best-effort — segue na biblioteca */
+   439→    } finally {
+   440→      setPackLoading(false)
+   441→    }
+   442→  }, [])
+   443→
+   444→  const handleStart = (name: string, mode: ExamMode) => {
+   445→    if (!pack) return
+   446→    setState(freshState(name, mode))
+   447→    setSavedMeta({ finished: false, mode, name })
+   448→    setPhase('exam')
+   449→  }
+   450→
+   451→  const handleContinue = () => {
+   452→    if (!pack) return
+   453→    const saved = loadSaved(pack.id, pack.questions.length - 1)
+   454→    if (saved) {
+   455→      setState(saved)
+   456→      setPhase(saved.finished ? 'results' : 'exam')
+   457→    }
+   458→  }
+   459→
+   460→  const handleViewResults = () => {
+   461→    if (!pack) return
+   462→    const saved = loadSaved(pack.id, pack.questions.length - 1)
+   463→    if (saved) {
+   464→      setState(saved)
+   465→      setPhase('results')
+   466→    }
+   467→  }
+   468→
+   469→  const handleDiscard = () => {
+   470→    if (!pack) return
+   471→    try {
+   472→      window.localStorage.removeItem(storageKeyFor(pack.id))
+   473→    } catch {
+   474→      /* noop */
+   475→    }
+   476→    setSavedInfo((info) => {
+   477→      const next = { ...info }
+   478→      delete next[pack.id]
+   479→      return next
+   480→    })
+   481→    setSavedMeta(null)
+   482→    setState(null)
+   483→    setPhase('welcome')
+   484→  }
+   485→
+   486→  const handleFinish = useCallback(() => {
+   487→    if (!state || state.finished || !pack) return
+   488→    const finished: ExamState = { ...state, finished: true, finishedAt: Date.now() }
+   489→    setState(finished)
+   490→    // Registra a tentativa no banco LOCAL (provas oficiais e simulados de PDF)
+   491→    const total = pack.questions.length
+   492→    const correct = pack.questions.filter((q) => finished.answers[q.id] === q.answer).length
+   493→    const answered = pack.questions.filter((q) => finished.answers[q.id]).length
+   494→    const bySubject = bySubjectFrom(pack.questions, finished.answers, subjectNameMap(pack))
+   495→    void addLocalAttempt({
+   496→      id: `att-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+   497→      docId: pack.id,
+   498→      name: finished.name,
+   499→      title: pack.title,
+   500→      bySubject,
+   501→      mode: finished.mode,
+   502→      correct,
+   503→      answered,
+   504→      total,
+   505→      pct: total > 0 ? Math.round((correct / total) * 100) : 0,
+   506→      timeUsedMs: (finished.finishedAt ?? Date.now()) - finished.startedAt,
+   507→      createdAt: new Date().toISOString(),
+   508→    }).then(() => void recomputeStats())
+   509→    // CADERNO DE ERROS: toda questão respondida errada entra para revisão futura
+   510→    const subjectNames = subjectNameMap(pack)
+   511→    const missedAt = new Date().toISOString()
+   512→    const wrongEntries: WrongQuestionInput[] = pack.questions
+   513→      .filter((q) => finished.answers[q.id] && finished.answers[q.id] !== q.answer)
+   514→      .map((q) => ({
+   515→        id: `${pack.id}:${q.id}`,
+   516→        docId: pack.id,
+   517→        docTitle: pack.title,
+   518→        questionId: q.id,
+   519→        subject: subjectNames.get(q.subjectId) ?? q.subjectId,
+   520→        statement: q.statement,
+   521→        textRef: q.textRef,
+   522→        textBlock: q.textRef ? pack.textBlocks[q.textRef] : undefined,
+   523→        style: q.options.length <= 2 ? 'certo_errado' : 'multipla',
+   524→        options: q.options,
+   525→        answer: q.answer,
+   526→        comment: q.comment,
+   527→        lastMissedAt: missedAt,
+   528→      }))
+   529→    if (wrongEntries.length > 0) {
+   530→      void recordWrongQuestions(wrongEntries).then(() => void refreshErrorCount())
+   531→    }
+   532→    setSavedMeta((m) => ({ finished: true, mode: m?.mode ?? 'prova', name: m?.name ?? '' }))
+   533→    setPhase('results')
+   534→  }, [state, pack, recomputeStats, refreshErrorCount])
+   535→
+   536→  const handleDelete = useCallback(
+   537→    async (docId: string) => {
+   538→      try {
+   539→        await deleteLocalDocument(docId)
+   540→      } catch {
+   541→        /* segue */
+   542→      }
+   543→      try {
+   544→        window.localStorage.removeItem(storageKeyFor(docId))
+   545→      } catch {
+   546→        /* noop */
+   547→      }
+   548→      void loadDocs()
+   549→      void recomputeStats()
+   550→    },
+   551→    [loadDocs, recomputeStats]
+   552→  )
+   553→
+   554→  // Heartbeat: o hook useSession já verifica /api/auth/me a cada 5 min e ao
+   555→  // voltar para o app — valida sessão, dispositivo único e status de acesso.
+   556→
+   557→  // Splash enquanto carrega sessão/estado
+   558→  if (!hydrated || session.loading) {
+   559→    return (
+   560→      <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-slate-50 text-slate-400">
+   561→        <ShieldCheck className="h-10 w-10 animate-pulse text-amber-500" />
+   562→        <p className="text-sm">Carregando simulados...</p>
+   563→      </div>
+   564→    )
+   565→  }
+   566→
+   567→  const hasAccess =
+   568→    session.authed && session.access && (session.access.status === 'trial' || session.access.status === 'active')
+   569→
+   570→  // Sem acesso: landing ou tela de conta (cadastro obrigatório)
+   571→  if (!hasAccess) {
+   572→    if (phase === 'access') {
+   573→      return (
+   574→        <AccessScreen
+   575→          session={session}
+   576→          initialMode={accessMode}
+   577→          onBack={() => setPhase('landing')}
+   578→          onDone={() => setPhase('library')}
+   579→        />
+   580→      )
+   581→    }
+   582→    return (
+   583→      <LandingPage
+   584→        onEnterAccess={() => {
+   585→          setAccessMode('entrar')
+   586→          setPhase('access')
+   587→        }}
+   588→        onStartTrial={() => {
+   589→          setAccessMode('registrar')
+   590→          setPhase('access')
+   591→        }}
+   592→      />
+   593→    )
+   594→  }
+   595→
+   596→  if (phase === 'access') {
+   597→    // Conta autenticada gerenciando acesso/assinatura
+   598→    return (
+   599→      <AccessScreen
+   600→        session={session}
+   601→        initialMode={accessMode}
+   602→        onBack={() => setPhase('library')}
+   603→        onDone={() => setPhase('library')}
+   604→      />
+   605→    )
+   606→  }
+   607→
+   608→  if (phase === 'library') {
+   609→    return (
+   610→      <LibraryScreen
+   611→        docs={docs}
+   612→        loading={docsLoading}
+   613→        savedInfo={savedInfo}
+   614→        onOpen={(id) => void openDoc(id)}
+   615→        onDelete={(id) => void handleDelete(id)}
+   616→        onUploadCompleted={handleUploadCompleted}
+   617→        licenseBadge={{
+   618→          active: session.access?.status === 'active',
+   619→          trialDaysLeft: session.access?.status === 'trial' ? (session.access.trialDaysLeft ?? 0) : null,
+   620→          trialEndsAt: session.access?.trialEndsAt ?? null,
+   621→        }}
+   622→        accountEmail={session.user?.email}
+   623→        accountName={displayNameOf(session.user)}
+   624→        stats={stats}
+   625→        onManageAccess={() => setPhase('access')}
+   626→        onOpenPerformance={(tab) => {
+   627→          setPerfTab(tab)
+   628→          setPhase('desempenho')
+   629→        }}
+   630→        onOpenPomodoro={() => setPhase('pomodoro')}
+   631→        onOpenErrors={() => setPhase('erros')}
+   632→        errorCount={errorCount}
+   633→        onRandomSimulado={(opts) => void handleRandomSimulado(opts)}
+   634→        weekAnswered={answeredThisWeek(allAttempts)}
+   635→        onSignOut={() => void session.logout()}
+   636→      />
+   637→    )
+   638→  }
+   639→
+   640→  if (phase === 'desempenho') {
+   641→    return (
+   642→      <PerformanceScreen
+   643→        initialTab={perfTab}
+   644→        stats={stats}
+   645→        attempts={allAttempts}
+   646→        accountName={displayNameOf(session.user)}
+   647→        accountEmail={session.user?.email}
+   648→        licenseBadge={{
+   649→          active: session.access?.status === 'active',
+   650→          trialDaysLeft: session.access?.status === 'trial' ? (session.access.trialDaysLeft ?? 0) : null,
+   651→          trialEndsAt: session.access?.trialEndsAt ?? null,
+   652→        }}
+   653→        onBack={() => setPhase('library')}
+   654→        onSubscribe={() => window.open(SITE.checkoutUrl, '_blank', 'noopener,noreferrer')}
+   655→      />
+   656→    )
+   657→  }
+   658→
+   659→  if (phase === 'pomodoro') {
+   660→    return <PomodoroScreen onBack={() => setPhase('library')} />
+   661→  }
+   662→
+   663→  if (phase === 'erros') {
+   664→    return <ErrorsScreen onBack={() => setPhase('library')} />
+   665→  }
+   666→
+   667→  // Telas que dependem do pack
+   668→  if (packLoading || !pack) {
+   669→    return (
+   670→      <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-slate-50 text-slate-400">
+   671→        <Loader2 className="h-8 w-8 animate-spin text-amber-500" />
+   672→        <p className="text-sm">Carregando simulado...</p>
+   673→      </div>
+   674→    )
+   675→  }
+   676→
+   677→  if (phase === 'exam' && state && !state.finished) {
+   678→    return (
+   679→      <ExamScreen
+   680→        pack={pack}
+   681→        state={state}
+   682→        onAnswer={(qid, key) => setState((s) => (s ? { ...s, answers: { ...s.answers, [qid]: key } } : s))}
+   683→        onToggleMark={(qid) =>
+   684→          setState((s) =>
+   685→            s
+   686→              ? {
+   687→                  ...s,
+   688→                  marked: s.marked.includes(qid) ? s.marked.filter((m) => m !== qid) : [...s.marked, qid],
+   689→                }
+   690→              : s
+   691→          )
+   692→        }
+   693→        onNavigate={(index) =>
+   694→          setState((s) => (s ? { ...s, current: Math.min(Math.max(index, 0), pack.questions.length - 1) } : s))
+   695→        }
+   696→        onFinish={handleFinish}
+   697→      />
+   698→    )
+   699→  }
+   700→
+   701→  if (phase === 'results' && state?.finished) {
+   702→    return (
+   703→      <ResultsScreen
+   704→        pack={pack}
+   705→        state={state}
+   706→        onReview={() => setPhase('review')}
+   707→        licenseBadge={{
+   708→          active: session.access?.status === 'active',
+   709→          trialDaysLeft: session.access?.status === 'trial' ? (session.access.trialDaysLeft ?? 0) : null,
+   710→          trialEndsAt: session.access?.trialEndsAt ?? null,
+   711→        }}
+   712→        onSubscribe={() => window.open(SITE.checkoutUrl, '_blank', 'noopener,noreferrer')}
+   713→        accountName={displayNameOf(session.user)}
+   714→        onRedo={() => {
+   715→          try {
+   716→            window.localStorage.removeItem(storageKeyFor(pack.id))
+   717→          } catch {
+   718→            /* noop */
+   719→          }
+   720→          setSavedInfo((info) => {
+   721→            const next = { ...info }
+   722→            delete next[pack.id]
+   723→            return next
+   724→          })
+   725→          setSavedMeta(null)
+   726→          setState(null)
+   727→          setPhase('welcome')
+   728→        }}
+   729→        onBackToStart={() => setPhase('welcome')}
+   730→      />
+   731→    )
+   732→  }
+   733→
+   734→  if (phase === 'review' && state?.finished) {
+   735→    return (
+   736→      <ReviewScreen
+   737→        pack={pack}
+   738→        answers={state.answers}
+   739→        marked={state.marked}
+   740→        onBack={() => setPhase('results')}
+   741→      />
+   742→    )
+   743→  }
+   744→
+   745→  return (
+   746→    <WelcomeScreen
+   747→      pack={pack}
+   748→      defaultName={savedMeta?.name ?? ''}
+   749→      defaultMode={savedMeta?.mode ?? 'prova'}
+   750→      hasSaved={Boolean(savedMeta)}
+   751→      savedFinished={Boolean(savedMeta?.finished)}
+   752→      attempts={attempts}
+   753→      onStart={handleStart}
+   754→      onContinue={handleContinue}
+   755→      onViewResults={handleViewResults}
+   756→      onDiscard={handleDiscard}
+   757→      onBack={backToLibrary}
+   758→    />
+   759→  )
+   760→}
+   761→
