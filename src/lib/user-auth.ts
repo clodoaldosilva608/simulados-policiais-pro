@@ -148,7 +148,10 @@ export function accessOf(user: RegistryUser): {
   if (user.status === 'trial' && user.trialStartedAt) {
     const end = user.trialStartedAt + (user.trialExtendedDays ?? 0) * 86400000 + SITE.trialDays * 86400000
     if (Date.now() < end) {
-      const left = Math.max(0, Math.ceil((end - Date.now()) / 86400000))
+      // Dias CHEIOS restantes (Math.floor) — mesma régua do cronômetro exato
+      // (TrialCountdown usa trialEndsAt com floor): assim o badge do menu e o
+      // cronômetro do topo nunca divergem (7d vs 6d 23:59).
+      const left = Math.max(0, Math.floor((end - Date.now()) / 86400000))
       return { status: 'trial', trialDaysLeft: left, trialEndsAt: new Date(end).toISOString() }
     }
     return { status: 'expired', trialDaysLeft: 0, trialEndsAt: null }

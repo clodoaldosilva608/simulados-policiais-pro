@@ -126,10 +126,16 @@ interface LibraryScreenProps {
   accountEmail?: string
   /** Primeiro nome do aluno (saudação no painel) */
   accountName?: string
+  /** Foto de perfil (data URL) — menu e painel */
+  accountPhoto?: string
   /** Métricas de acertos/erros de todos os simulados concluídos */
   stats?: DashboardStats | null
   /** Abre a tela de acesso/gerenciar assinatura */
   onManageAccess: () => void
+  /** Abre a aba Minha conta (dados, foto, senha) */
+  onOpenAccount: () => void
+  /** Abre a tela Suporte (e-mail do atendimento) */
+  onOpenSupport: () => void
   /** Abre a tela Meu desempenho (aba resumo) ou Meu histórico (aba historico) */
   onOpenPerformance: (tab: 'resumo' | 'historico') => void
   /** Abre o cronômetro Pomodoro de estudo */
@@ -352,8 +358,11 @@ export function LibraryScreen({
   licenseBadge,
   accountEmail,
   accountName,
+  accountPhoto,
   stats,
   onManageAccess,
+  onOpenAccount,
+  onOpenSupport,
   onOpenPerformance,
   onOpenPomodoro,
   onOpenErrors,
@@ -444,6 +453,10 @@ export function LibraryScreen({
 
   const avatarInitial = (accountName ?? '').trim().charAt(0).toUpperCase() || 'A'
 
+  /** Dias restantes em rótulo curto — mesma régua do cronômetro (floor); "<1d" no último dia */
+  const trialDaysShort = (d: number | null | undefined): string =>
+    d == null ? '' : d > 0 ? `${d}d` : '<1d'
+
   const readyDocs = docs.filter((d) => d.status === 'ready')
   const otherDocs = docs.filter((d) => d.status !== 'ready')
 
@@ -492,8 +505,8 @@ export function LibraryScreen({
                 </>
               ) : licenseBadge.trialDaysLeft !== null ? (
                 <>
-                  <span className="sm:hidden">{licenseBadge.trialDaysLeft}d</span>
-                  <span className="hidden sm:inline">Teste grátis • {licenseBadge.trialDaysLeft}d</span>
+                  <span className="sm:hidden">{trialDaysShort(licenseBadge.trialDaysLeft)}</span>
+                  <span className="hidden sm:inline">Teste grátis • {trialDaysShort(licenseBadge.trialDaysLeft)}</span>
                 </>
               ) : (
                 <>
@@ -527,8 +540,13 @@ export function LibraryScreen({
               >
                 <SheetHeader className="gap-0 space-y-0 rounded-none border-b border-slate-800 bg-slate-900 p-5 pb-6 text-white">
                   <div className="flex items-center gap-3">
-                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-amber-400 text-base font-bold text-slate-950">
-                      {avatarInitial}
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full bg-amber-400 text-base font-bold text-slate-950">
+                      {accountPhoto ? (
+                         
+                        <img src={accountPhoto} alt="" className="h-full w-full object-cover" />
+                      ) : (
+                        avatarInitial
+                      )}
                     </div>
                     <div className="min-w-0">
                       <SheetTitle className="truncate text-base font-bold text-white">
@@ -552,7 +570,7 @@ export function LibraryScreen({
                       </>
                     ) : licenseBadge.trialDaysLeft !== null ? (
                       <>
-                        <Sparkles className="h-3.5 w-3.5" /> Teste grátis • {licenseBadge.trialDaysLeft}d restantes
+                        <Sparkles className="h-3.5 w-3.5" /> Teste grátis • {trialDaysShort(licenseBadge.trialDaysLeft)} restantes
                       </>
                     ) : (
                       <>
@@ -599,10 +617,10 @@ export function LibraryScreen({
                   <MenuItem
                     icon={UserRound}
                     label="Minha conta"
-                    hint="Status, ativação e aparelho"
+                    hint="Dados, foto de perfil e senha"
                     onClick={() => {
                       setMenuOpen(false)
-                      onManageAccess()
+                      onOpenAccount()
                     }}
                   />
                   <MenuItem
@@ -687,9 +705,11 @@ export function LibraryScreen({
                   <MenuItem
                     icon={LifeBuoy}
                     label="Suporte"
-                    hint={SITE.supportEmail}
-                    href={`mailto:${SITE.supportEmail}`}
-                    onClick={() => setMenuOpen(false)}
+                    hint="Fale com a gente por e-mail"
+                    onClick={() => {
+                      setMenuOpen(false)
+                      onOpenSupport()
+                    }}
                   />
 
                   {/* Aparência: tema e tamanho da fonte */}
@@ -788,8 +808,13 @@ export function LibraryScreen({
           <section id="painel-desempenho" aria-label="Meu desempenho" className="mb-6 scroll-mt-20">
             <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
               <div className="flex items-center gap-3">
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-slate-900 text-base font-bold text-amber-300">
-                  {avatarInitial}
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full bg-slate-900 text-base font-bold text-amber-300">
+                  {accountPhoto ? (
+                     
+                    <img src={accountPhoto} alt="" className="h-full w-full object-cover" />
+                  ) : (
+                    avatarInitial
+                  )}
                 </div>
                 <div className="min-w-0">
                   <p className="truncate text-lg font-bold leading-tight text-slate-900">Olá, {accountName}</p>

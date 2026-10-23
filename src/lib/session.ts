@@ -17,6 +17,13 @@ import { deviceUid } from '@/lib/license'
 export interface SessionUser {
   name?: string
   email?: string
+  /** foto de perfil (data URL) — segue a conta entre aparelhos */
+  photo?: string
+  /** criação da conta (epoch ms) */
+  createdAt?: number
+  /** aparelho vinculado (resumo do navegador/plataforma) */
+  device?: string
+  platform?: string
 }
 
 export interface AccessInfo {

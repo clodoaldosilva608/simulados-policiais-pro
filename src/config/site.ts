@@ -23,7 +23,8 @@ export const SITE = {
   /** Link de checkout da Cakto (env NEXT_PUBLIC_CAKTO_CHECKOUT_URL sobrepõe) */
   checkoutUrl:
     (process.env.NEXT_PUBLIC_CAKTO_CHECKOUT_URL ?? '') || 'https://pay.cakto.com.br/v5zisya',
-  supportEmail: 'suporte@simuladospoliciais.pro',
+  /** Atendimento oficial — Gmail do suporte (pedidos de alteração de e-mail, dúvidas, pagamentos) */
+  supportEmail: 'suportesimuladospoliciais@gmail.com',
 } as const
 
 /** true quando o link de pagamento da Cakto já foi configurado */

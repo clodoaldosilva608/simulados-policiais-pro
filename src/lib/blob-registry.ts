@@ -38,6 +38,8 @@ export interface RegistryUser {
   authEmail?: string
   /** hash scrypt (formato "scrypt:<saltB64url>:<keyB64url>") — nunca em texto plano */
   passwordHash?: string
+  /** foto de perfil (data URL JPEG/PNG redimensionada no cliente, ≤ ~160 KB) */
+  photo?: string
   /** aparelho ÚNICO atualmente vinculado (deviceUid) — um dispositivo por vez */
   activeDevice?: string
   /** quando o vínculo de aparelho foi definido */

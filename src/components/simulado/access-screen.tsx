@@ -413,8 +413,14 @@ function AccountView({
             <Clock className="h-6 w-6 shrink-0 text-emerald-600" />
             <div className="min-w-0 flex-1">
               <p className="text-sm font-bold text-emerald-900">
-                Teste grátis ativo — {(access?.trialDaysLeft ?? 0)}{' '}
-                {(access?.trialDaysLeft ?? 0) === 1 ? 'dia restante' : 'dias restantes'}
+                {(access?.trialDaysLeft ?? 0) > 0 ? (
+                  <>
+                    Teste grátis ativo — {access?.trialDaysLeft}{' '}
+                    {(access?.trialDaysLeft ?? 0) === 1 ? 'dia restante' : 'dias restantes'}
+                  </>
+                ) : (
+                  'Teste grátis ativo — menos de 1 dia restante'
+                )}
               </p>
               <p className="text-xs text-emerald-700">Todas as provas liberadas durante o teste.</p>
             </div>

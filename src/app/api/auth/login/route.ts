@@ -85,7 +85,7 @@ export async function POST(req: NextRequest) {
   return NextResponse.json(
     {
       ok: true,
-      user: { name: bound.name, email: bound.email },
+      user: { name: bound.name, email: bound.email, photo: bound.photo, createdAt: bound.createdAt },
       access: accessOf(bound),
     },
     { headers: { 'Set-Cookie': userCookieHeader(token) } },

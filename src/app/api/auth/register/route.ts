@@ -98,7 +98,7 @@ export async function POST(req: NextRequest) {
   return NextResponse.json(
     {
       ok: true,
-      user: { name: user.name, email: user.email },
+      user: { name: user.name, email: user.email, photo: user.photo, createdAt: user.createdAt },
       access: accessOf(user),
       trial,
     },

@@ -46,7 +46,14 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({
     ok: true,
     authenticated: true,
-    user: { name: user.name, email: user.email },
+    user: {
+      name: user.name,
+      email: user.email,
+      photo: user.photo,
+      createdAt: user.createdAt,
+      device: user.device,
+      platform: user.platform,
+    },
     access: accessOf(user),
   })
 }

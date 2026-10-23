@@ -4,6 +4,8 @@ import { useCallback, useEffect, useState } from 'react'
 import { Loader2, GraduationCap, ShieldCheck } from 'lucide-react'
 import { LandingPage } from '@/components/landing/landing-page'
 import { AccessScreen } from '@/components/simulado/access-screen'
+import { AccountScreen } from '@/components/simulado/account-screen'
+import { SupportScreen } from '@/components/simulado/support-screen'
 import { LibraryScreen, type SavedInfo, type DashboardStats } from '@/components/simulado/library-screen'
 import { PerformanceScreen, type PerfTab } from '@/components/simulado/performance-screen'
 import { PomodoroScreen } from '@/components/simulado/pomodoro-screen'
@@ -105,7 +107,7 @@ function displayNameOf(user: { name?: string; email?: string } | null | undefine
     .join(' ')
 }
 
-type Phase = 'landing' | 'access' | 'library' | 'desempenho' | 'pomodoro' | 'erros' | 'ia' | 'welcome' | 'exam' | 'results' | 'review'
+type Phase = 'landing' | 'access' | 'library' | 'conta' | 'suporte' | 'desempenho' | 'pomodoro' | 'erros' | 'ia' | 'welcome' | 'exam' | 'results' | 'review'
 
 const storageKeyFor = (docId: string) => `simulado-${docId}`
 
@@ -622,8 +624,11 @@ export default function Home() {
         }}
         accountEmail={session.user?.email}
         accountName={displayNameOf(session.user)}
+        accountPhoto={session.user?.photo}
         stats={stats}
         onManageAccess={() => setPhase('access')}
+        onOpenAccount={() => setPhase('conta')}
+        onOpenSupport={() => setPhase('suporte')}
         onOpenPerformance={(tab) => {
           setPerfTab(tab)
           setPhase('desempenho')
@@ -635,6 +640,27 @@ export default function Home() {
         onRandomSimulado={(opts) => void handleRandomSimulado(opts)}
         weekAnswered={answeredThisWeek(allAttempts)}
         onSignOut={() => void session.logout()}
+      />
+    )
+  }
+
+  if (phase === 'conta') {
+    return (
+      <AccountScreen
+        session={session}
+        onBack={() => setPhase('library')}
+        onManageAccess={() => setPhase('access')}
+        onOpenSupport={() => setPhase('suporte')}
+      />
+    )
+  }
+
+  if (phase === 'suporte') {
+    return (
+      <SupportScreen
+        onBack={() => setPhase('library')}
+        accountEmail={session.user?.email}
+        accountName={displayNameOf(session.user)}
       />
     )
   }
