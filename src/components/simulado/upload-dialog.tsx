@@ -320,15 +320,14 @@ export function UploadDialog({ open, onOpenChange, resumeDocId, initialFile, onC
     setErrorMsg('')
     setStep('extracting')
     try {
-      // 1) Extração de texto — acontece NO APARELHO do usuário
-      const buffer = new Uint8Array(await file.arrayBuffer())
       const baseTitle = (title.trim() || file.name.replace(/\.pdf$/i, '').replace(/[_-]+/g, ' ') || 'Simulado de PDF').slice(0, 120)
       const accessHeader = buildAccessHeader()
 
       let text = ''
       let pagesCount: number | null = null
       try {
-        const extraction = await extractPdfText(buffer)
+        // buffer próprio: o pdf.js desanexa o ArrayBuffer após abrir o documento
+        const extraction = await extractPdfText(new Uint8Array(await file.arrayBuffer()))
         text = extraction.text
         pagesCount = extraction.pages
       } catch {
@@ -366,7 +365,7 @@ export function UploadDialog({ open, onOpenChange, resumeDocId, initialFile, onC
         setDocId(baseDoc.id)
         onCompleted()
 
-        const ocr = await runOcr(buffer, baseDoc, accessHeader)
+        const ocr = await runOcr(new Uint8Array(await file.arrayBuffer()), baseDoc, accessHeader)
         if (cancelled.current || ocr === null) return
         if (!ocr.text || ocr.text.length < 200) {
           const failed: LocalDocument = {
