@@ -409,3 +409,26 @@ Stage Summary:
 - Cronômetro de teste e badge do menu nunca mais divergem (mesma régua floor + "<1d" no último dia)
 - Aluno tem aba Minha conta de verdade: vê todos os dados, edita nome, troca a foto (segue a conta entre aparelhos) e a senha; e-mail fica travado com caminho direto para o suporte
 - Suporte agora é suportesimuladospoliciais@gmail.com, com tela dedicada que abre o e-mail já preenchido
+
+---
+Task ID: 16
+Agent: Z.ai (main)
+Task: Auditoria completa de engenharia (Code & Architecture Review) do Simulados Policiais Pro — modo SOMENTE-LEITURA — avaliando prontidão para 100.000 usuários ativos, conforme PROMPT-DE-AVALIAÇÃO-GERAL-DA-APLICAÇÃO.docx do usuário.
+
+Work Log:
+- Lido o DOCX anexado (roteiro de 25 etapas + formato final de 20 seções); nenhuma alteração feita no código do projeto (modo somente-leitura respeitado).
+- 3 agentes Explore em paralelo varreram: (a) backend/rotas/auth/admin/webhooks/secrets; (b) camada de dados (Prisma órfão, Blob JSON, IndexedDB/localStorage, LGPD); (c) frontend/operação/deps/CI/trial.
+- Verificação de primeira mão dos achados críticos: admin/overview/route.ts:47-53,103,113-116 (passwordHash+PII+accessCodesEnv), webhook/cakto/route.ts:47-54,56-110 (segredo opcional, replay, sem HMAC), generate/route.ts:21-31,136,151 (gate ACCESS_CODES), next.config.ts, auth/me:41 (heartbeat escreve Blob), blob-registry.ts:112,139-154,168-218 (cap 2000, O(N), RMW sem lock), user-auth.ts (scrypt/HMAC/Bearer/fallback de segredo), package.json.
+- Higiene de git: token Vercel (vcp_) hardcoded em scripts/set-vercel-ai-env.py:5, arquivo RASTREADO, branch ahead 17 do push; .env e worklog.md commitados; PAT na URL do remote.
+- Probes não destrutivos em produção: homepage 200/39ms; headers (só HSTS); /api/admin/overview 401 correto; webhook GET enumera rota; POST /api/generate vazio = 400 "Bloco de texto muito curto" (prova: ACCESS_CODES ausente → proxy de IA aberto).
+- Probes de anonimato respeitados: nenhum dado de usuário lido; nenhum token impresso (saídas redacted).
+- Síntese: nota geral 3,2/10; 7 críticos + 11 altos + médios consolidados; "o que quebra primeiro" (Blob → custo IA → heartbeat → admin → operação); roadmap AGORA/1k/10k/50k/100k; arquitetura-alvo (monólito + Postgres + fila IA + Upstash + Sentry).
+- Relatório gerado via pipeline Report do skill pdf: capa Template 07 (html2poster.js, validada com poster_validate + cover_validate), corpo ReportLab (TocDocTemplate/multiBuild, 20 seções, 6 tabelas, 2 figuras), merge pypdf normalizado.
+- Correções de qualidade durante o build: acentuação completa PT-BR; offset do TOC alinhado ao rodapé; travessões fora de início de linha; tamanho de página normalizado.
+- QA final: pdf_qa.py PASS 12/12; font.check 0 issues; pages.clean sem páginas em branco; meta.brand aplicado.
+
+Stage Summary:
+- Entregável: /home/z/my-project/download/auditoria-simulados-policiais-pro.pdf (21 páginas A4, ~698 KB, capa + sumário clicável + 20 seções).
+- Fontes: download/auditoria-fontes/ (capa.html, diagrama-arquitetura.html/png, notas-por-pilar.png); scripts reutilizáveis em scripts/audit_*.py.
+- Principais descobertas para próximas tarefas: (1) ROTACIONAR vcp_/ghp_/Cakto secret ANTES do próximo git push (branch está ahead 17 com token commitado); (2) webhook Cakto fail-closed + idempotência; (3) overview sem passwordHash/PII; (4) sessão+rate limit em generate/transcribe (ACCESS_CODES ausente em produção confirmado por probe); (5) Postgres para substituir Blob JSON de contas; (6) LGPD delete/export inexistente.
+- Nenhum código do app foi alterado (auditoria read-only); os 3 bugs da sessão anterior seguem corrigidos pelo commit 4efac13.
