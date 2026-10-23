@@ -541,3 +541,25 @@ Stage Summary:
 - Cada questão agora é viral: um clique gera imagem da tela da questão com marca do app e abre o compartilhamento nativo (WhatsApp em grupos é o principal canal de aquisição)
 - O funil de conversão tem 3 pontos de contato automáticos configuráveis no admin (banco, exame, resultados) com CTA direto para o checkout Cakto
 - Pendências: importar mais lotes por carreira se o owner quiser 1000+; token vcp_ seguindo em uso temporário (rotacionar); html-to-image pode falhar com imagens externas sem CORS (raro; toast silencioso)
+
+---
+Task ID: 25
+Agent: main (Z.ai)
+Task: Layout das questões no estilo Qconcursos (conforme screenshot) + destaque visual no botão compartilhar após acerto/erro + importar mais lotes por carreira rumo a 1.000+ questões
+
+Work Log:
+- EXAM-SCREEN REDESENHADA (estilo Qconcursos, conforme imagem enviada): cabeçalho escuro com matéria · assunto em dourado + "Questão X de Y"; barra do cronômetro com mapa de questões (dourado) e quadrado vermelho de finalizar; card escuro (#1d1811) com badges [ano] [cargo/concurso] [banca] e linha "Nível: X"; ações VOLTAR DEPOIS (sinaliza + pula para a próxima em branco, estilo Qconcursos), sinalizar (bandeira), alternância PAPEL/DARK persistida (spp-exam-paper-v1); alternativas A-E com botão RISCAR ao lado de cada uma (riscado = line-through esmaecido, togglável); ESPAÇO LIVRE "Clique aqui para anotar" (textarea por questão); barra inferior fixa com anotações (rola e foca a nota), próxima em branco, anterior e próxima; modo papel (claro) completo via tokens de tema
+- STATE: ExamState ganhou notes (Record<number,string>) e eliminated (Record<number,OptionKey[]>) — persistidos no localStorage existente; handlers onSetNote/onToggleEliminate no page.tsx; retrocompatível (loadSaved com fallback {})
+- COMPARTILHAR VIRAL: ShareQuestionButton com estados idle/correct/wrong/answered — após responder no modo estudo: verde "Compartilhe seu acerto!" (acerto) ou vermelho "Desafie um amigo!" (erro), no modo prova âmbar "Compartilhar questão"; brilho pulsante (ring+shadow) + ping dot; continua oculto na captura (data-share-hide)
+- METADADOS POR QUESTÃO: Question ganhou banca/ano/concurso/nivel/assunto; bankToPack injeta do DTO do servidor (provas oficiais usam pack-level) — alimenta os badges
+- BANCO 568 → 1.002 (CSV completo): 9 lotes novos (pf-batch2 79, pc-batch 65 [carreira nova PC], prf-batch2 65, gm-batch2 80, pm-batch2 85, transito-batch2 65, policia-penal-batch2 50, batch2b 45) com comentário por questão; build agora EMBARALHA as alternativas das MC (fim do gabarito sempre em A); dedupe 17; 0 erros de validação
+- RESILIÊNCIA DE ARMAZENAMENTO (incidente em produção): a Vercel Blob store (simulados-registry) amanheceu limits-exceeded-suspended (403 em todas as operações; criação de novo store bloqueada pela própria Vercel enquanto o limite da conta estiver estourado; registro/login do aluno 500). Mitigações implementadas: cache TTL 45s + write-through em readJson/writeJson, poda de eventos amostrada (5% em vez de todo append), seed estático src/data/bank-seed.ts (1.002 questões, gerado pelo build) servido por /api/questions quando o store vazio/indisponível (flag source:'seed'), fallback filesystem local (.data-local) quando BLOB_READ_WRITE_TOKEN ausente (dev/E2E), rotas de aluno usam storageReady() — admin continua fail-closed no blob
+- E2E LOCAL (next start sem token + agent-browser 390x844): registro via UI → dashboard → Banco de Questões mostra "1002 questões disponíveis" (seed) → prática 10 em modo estudo → layout dark conforme referência (badges/nível/voltar depois/riscar/espaço livre/nav inferior) → acerto: glow VERDE + "Compartilhe seu acerto!" → erro: glow VERMELHO + "Desafie um amigo!" + comentário → RISCAR A/B + nota persistida → PAPEL (card claro) → VOLTAR DEPOIS pulou da Q3 para a Q4 → 0 erros de console
+- DEPLOY: dpl simuladospoliciais-dmoj5hyrm READY, prod HTTP 200, /api/config ok; import do lote 2 (489) CONTINUA PENDENTE enquanto a store estiver suspensa (scripts/import-batch2.sh pronto — rodar quando a cota resetar ou após upgrade)
+- Push GitHub 6bd2bb1..ece17da; screenshots de E2E removidos; .data-local no .gitignore
+
+Stage Summary:
+- A tela de questão agora reproduz o layout do Qconcursos (dark dourado, badges de prova, riscar, anotações, voltar depois, nav inferior, papel/dark) e cada resposta acende o botão de compartilhar (verde/vermelho/âmbar) para ampliar o alcance viral
+- O banco de questões atinge 1.002 itens no CSV versionado; em produção o aluno já vê o banco completo via seed estático mesmo com o armazenamento suspenso
+- AÇÃO DO OWNER: a Vercel suspendeu o Blob por limite de uso — acessar vercel.com → Storage → simulados-registry → upgrade da cota (ou aguardar reset do ciclo); os dados (contas, 568 questões, pop-ups, config) estão preservados e voltam automaticamente; depois rodar scripts/import-batch2.sh para somar as 489 questões do lote 2 (1.057 no total)
+- Pendências: rotacionar tokens vcp_/ghp_ (histórico); considerar Postgres/Supabase (auditoria) para eliminar a dependência de cota do Blob
