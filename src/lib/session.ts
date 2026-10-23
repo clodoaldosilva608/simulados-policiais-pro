@@ -33,11 +33,21 @@ export interface AccessInfo {
   trialEndsAt?: string | null
 }
 
+/** Limites do plano (não-premium) vindos do servidor: config dinâmica do admin ou plano customizado */
+export interface PlanLimitsInfo {
+  simuladosPerMonth: number
+  questionsPerDay: number
+  comments: boolean
+  planName?: string
+}
+
 export interface SessionState {
   loading: boolean
   authed: boolean
   user: SessionUser | null
   access: AccessInfo | null
+  /** limites do plano grátis/customizado (null = premium/trial ilimitado) */
+  planLimits: PlanLimitsInfo | null
   /** conta em uso em outro aparelho */
   takenOver: boolean
   /** bloqueada/revogada pelo admin */
@@ -70,6 +80,7 @@ interface MeResponse {
   authenticated?: boolean
   user?: SessionUser
   access?: AccessInfo
+  planLimits?: PlanLimitsInfo | null
   reason?: string
   message?: string
 }
@@ -110,6 +121,7 @@ const IDLE: SessionState = {
   authed: false,
   user: null,
   access: null,
+  planLimits: null,
   takenOver: false,
   blocked: '',
   message: '',
@@ -130,6 +142,7 @@ export function useSession(): SessionApi {
           authed: true,
           user: data.user ?? null,
           access: data.access ?? null,
+          planLimits: data.planLimits ?? null,
           takenOver: false,
           blocked: '',
           message: '',
@@ -141,6 +154,7 @@ export function useSession(): SessionApi {
         authed: false,
         user: null,
         access: null,
+        planLimits: null,
         takenOver: data.reason === 'device',
         blocked: data.reason === 'banned' ? 'banned' : data.reason === 'revoked' ? 'revoked' : '',
         message: data.message ?? '',
@@ -214,6 +228,7 @@ export function useSession(): SessionApi {
       authed: false,
       user: null,
       access: null,
+      planLimits: null,
       takenOver: false,
       blocked: '',
       message: '',

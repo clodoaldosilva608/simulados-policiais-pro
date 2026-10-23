@@ -192,7 +192,7 @@ async function readIndex<T>(path: string): Promise<T> {
   return (await readJson<T>(path)) ?? ({} as T)
 }
 
-async function findAccountIdByEmail(email: string): Promise<string | null> {
+export async function findAccountIdByEmail(email: string): Promise<string | null> {
   const norm = normalizeEmail(email)
   if (!norm) return null
   const idx = await readIndex<EmailIndex>(EMAIL_INDEX)
@@ -208,6 +208,28 @@ async function claimEmail(email: string, id: string): Promise<void> {
   if (idx[norm] && idx[norm] !== id) return // já reivindicado por outra conta
   idx[norm] = id
   await writeJson(EMAIL_INDEX, idx)
+}
+
+/** ADMIN: reivindica o e-mail no índice para a conta (após criação manual pelo painel). */
+export async function claimEmailFor(email: string, id: string): Promise<void> {
+  await claimEmail(email, id)
+}
+
+/** ADMIN: troca o e-mail de uma conta (índice + registro). Retorna erro descritivo em caso de conflito. */
+export async function changeAccountEmail(
+  userId: string,
+  newEmail: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const email = normalizeEmail(newEmail)
+  if (!EMAIL_RE.test(email)) return { ok: false, error: 'E-mail inválido' }
+  const user = await getUser(userId)
+  if (!user) return { ok: false, error: 'Conta não encontrada' }
+  const existingId = await findAccountIdByEmail(email)
+  if (existingId && existingId !== userId) return { ok: false, error: 'E-mail já usado por outra conta' }
+  await purgeEmailRef(userId, user.email ?? user.authEmail)
+  await upsertUser(userId, { email, authEmail: email }, { heartbeat: false, serverAction: true })
+  await claimEmail(email, userId)
+  return { ok: true }
 }
 
 export async function deviceHasTrial(deviceUid: string): Promise<boolean> {

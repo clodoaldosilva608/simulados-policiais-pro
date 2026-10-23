@@ -6,11 +6,14 @@ import {
   BadgeCheck,
   BarChart3,
   Ban,
+  BookOpenCheck,
   Clock,
   Coins,
+  FileText,
   KeyRound,
   Loader2,
   LogOut,
+  Megaphone,
   RefreshCw,
   Search,
   Settings,
@@ -27,6 +30,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { UsersPanel, type AdminUser } from '@/app/admin/users-panel'
+import { QuestionsPanel } from '@/app/admin/questions-panel'
+import { MaterialsPanel } from '@/app/admin/materials-panel'
+import { PopupsPanel } from '@/app/admin/popups-panel'
+import { PlansPanel } from '@/app/admin/plans-panel'
 
 /* ------------------------------------------------------------------ */
 /* Tipos da API                                                        */
@@ -75,7 +82,7 @@ interface Overview {
   config: AppConfig
 }
 
-type Tab = 'usuarios' | 'eventos' | 'ajustes'
+type Tab = 'usuarios' | 'questoes' | 'materiais' | 'popups' | 'planos' | 'eventos' | 'ajustes'
 
 const BRL = (cents: number) =>
   (cents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -102,6 +109,7 @@ export default function AdminPage() {
   const [loggingIn, setLoggingIn] = useState(false)
 
   const [tab, setTab] = useState<Tab>('usuarios')
+  const [cfgTick, setCfgTick] = useState(0)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -328,10 +336,14 @@ export default function AdminPage() {
         </Card>
 
         {/* Abas */}
-        <div className="mt-5 grid grid-cols-3 gap-1 rounded-xl border border-slate-800 bg-slate-900 p-1">
+        <div className="mt-5 flex gap-1 overflow-x-auto rounded-xl border border-slate-800 bg-slate-900 p-1">
           {(
             [
               ['usuarios', 'Usuários', Users],
+              ['questoes', 'Questões', FileText],
+              ['materiais', 'Materiais', BookOpenCheck],
+              ['popups', 'Pop-ups', Megaphone],
+              ['planos', 'Planos', Coins],
               ['eventos', 'Eventos', Activity],
               ['ajustes', 'Ajustes', Settings],
             ] as [Tab, string, typeof Users][]
@@ -341,7 +353,7 @@ export default function AdminPage() {
               type="button"
               onClick={() => setTab(key)}
               aria-pressed={tab === key}
-              className={`flex h-10 items-center justify-center gap-1.5 rounded-lg text-xs font-bold transition-colors sm:text-sm ${
+              className={`flex h-10 shrink-0 items-center justify-center gap-1.5 rounded-lg px-3.5 text-xs font-bold transition-colors sm:text-sm ${
                 tab === key ? 'bg-amber-400 text-slate-950' : 'text-slate-400 hover:text-slate-200'
               }`}
             >
@@ -355,6 +367,21 @@ export default function AdminPage() {
             users={overview.users}
             reload={async () => {
               await load()
+            }}
+          />
+        )}
+
+        {tab === 'questoes' && <QuestionsPanel />}
+
+        {tab === 'materiais' && <MaterialsPanel />}
+
+        {tab === 'popups' && <PopupsPanel />}
+
+        {tab === 'planos' && (
+          <PlansPanel
+            onConfigSaved={() => {
+              setCfgTick((t) => t + 1)
+              void load()
             }}
           />
         )}
@@ -388,6 +415,7 @@ export default function AdminPage() {
         {tab === 'ajustes' && (
           <ConfigPanel
             config={config}
+            cfgTick={cfgTick}
             onReload={async () => {
               await load()
             }}
@@ -445,7 +473,11 @@ function EventBadge({ type }: { type: string }) {
 /* Ajustes: configuração + códigos de acesso + sync Cakto              */
 /* ------------------------------------------------------------------ */
 
-function ConfigPanel({ config, onReload }: { config: AppConfig; onReload: () => Promise<void> }) {
+function ConfigPanel({ config, cfgTick, onReload }: { config: AppConfig; cfgTick: number; onReload: () => Promise<void> }) {
+  useEffect(() => {
+    void onReload()
+     
+  }, [cfgTick])
   const [codes, setCodes] = useState<string[]>(config.accessCodes)
   const [envCodes] = useState<string[]>(config.accessCodesEnv)
   const [busy, setBusy] = useState(false)

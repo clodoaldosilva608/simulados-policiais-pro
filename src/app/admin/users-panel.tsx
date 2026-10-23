@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   BadgeCheck,
   Ban,
@@ -10,8 +10,12 @@ import {
   Clock,
   Download,
   FileText,
+  KeyRound,
   Loader2,
+  LogIn,
   MoreHorizontal,
+  Pencil,
+  Plus,
   Search,
   ShieldX,
   UserCheck,
@@ -76,9 +80,21 @@ export interface AdminUser {
   authEmail?: string
   activeDevice?: string
   activeDeviceAt?: number
+  /** plano customizado atribuído (index/plans.json) */
+  customPlanId?: string
   createdAt: number
   updatedAt: number
   lastSeen: number
+}
+
+interface CustomPlanRef {
+  id: string
+  name: string
+  price: string
+  simuladosPerMonth: number
+  questionsPerDay: number
+  comments: boolean
+  active: boolean
 }
 
 const SOURCE_LABEL: Record<string, string> = {
@@ -118,7 +134,23 @@ export function UsersPanel({ users, reload }: { users: AdminUser[]; reload: () =
   const [confirmBan, setConfirmBan] = useState<AdminUser | null>(null)
   const [noteDraft, setNoteDraft] = useState('')
   const [busyId, setBusyId] = useState<string | null>(null)
+  const [plans, setPlans] = useState<CustomPlanRef[]>([])
+  // criar conta
+  const [createOpen, setCreateOpen] = useState(false)
+  const [createDraft, setCreateDraft] = useState({ email: '', password: '', name: '', status: 'trial' })
+  // editar conta (dados completos)
+  const [editOpen, setEditOpen] = useState(false)
+  const [editDraft, setEditDraft] = useState<{ u: AdminUser; name: string; email: string; status: string; planId: string } | null>(null)
+  const [pwDraft, setPwDraft] = useState('')
   const PER_PAGE = 10
+
+  // carrega planos customizados (para atribuição)
+  useEffect(() => {
+    void fetch('/api/admin/plans', { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : { plans: [] }))
+      .then((d: { plans?: CustomPlanRef[] }) => setPlans(d.plans ?? []))
+      .catch(() => {})
+  }, [])
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -166,6 +198,109 @@ export function UsersPanel({ users, reload }: { users: AdminUser[]; reload: () =
       }
     } catch {
       toast({ title: 'Falha de conexão', variant: 'destructive' })
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  /** CRIAÇÃO de conta pelo admin */
+  const createUser = async () => {
+    setBusyId('creating')
+    try {
+      const res = await fetch('/api/admin/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'create', ...createDraft }),
+      })
+      const data = (await res.json()) as { ok?: boolean; error?: string; message?: string }
+      if (data.ok) {
+        toast({ title: 'Conta criada!', description: data.message })
+        setCreateOpen(false)
+        setCreateDraft({ email: '', password: '', name: '', status: 'trial' })
+        await reload()
+      } else {
+        toast({ title: 'Não foi possível criar', description: data.error, variant: 'destructive' })
+      }
+    } catch {
+      toast({ title: 'Falha de conexão', variant: 'destructive' })
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  /** EDIÇÃO completa: nome, e-mail, status, plano customizado */
+  const saveEdit = async () => {
+    if (!editDraft) return
+    setBusyId(editDraft.u.id)
+    try {
+      const emailChanged = editDraft.email.trim().toLowerCase() !== (editDraft.u.email ?? '').toLowerCase()
+      const res = await fetch('/api/admin/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'update',
+          id: editDraft.u.id,
+          name: editDraft.name,
+          email: emailChanged ? editDraft.email.trim() : undefined,
+          note: editDraft.u.notes,
+        }),
+      })
+      const data = (await res.json()) as { ok?: boolean; error?: string }
+      if (!data.ok) {
+        toast({ title: 'Erro ao salvar dados', description: data.error, variant: 'destructive' })
+        return
+      }
+      // status (plano) — só se mudou
+      if (editDraft.status !== editDraft.u.effStatus && ['trial', 'active', 'expired', 'canceled'].includes(editDraft.status)) {
+        await fetch('/api/admin/users', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'set_status', id: editDraft.u.id, status: editDraft.status }),
+        })
+      }
+      // plano customizado
+      const planChanged = editDraft.planId !== (editDraft.u.customPlanId ?? '')
+      if (planChanged) {
+        await fetch('/api/admin/users', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'set_plan', id: editDraft.u.id, planId: editDraft.planId || undefined }),
+        })
+      }
+      // reset de senha (opcional)
+      if (pwDraft.trim().length >= 6) {
+        await fetch('/api/admin/users', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'set_password', id: editDraft.u.id, password: pwDraft.trim() }),
+        })
+      }
+      toast({ title: 'Conta atualizada', description: 'Dados, plano e senha aplicados.' })
+      setEditOpen(false)
+      setEditDraft(null)
+      setPwDraft('')
+      await reload()
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  /** IMPERSONAÇÃO: abre o app logado na conta do aluno (suporte) */
+  const impersonate = async (u: AdminUser) => {
+    setBusyId(u.id)
+    try {
+      const res = await fetch('/api/admin/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'impersonate', id: u.id }),
+      })
+      const data = (await res.json()) as { ok?: boolean; error?: string }
+      if (data.ok) {
+        toast({ title: 'Sessão aberta como ' + (u.email ?? 'aluno'), description: 'O app abrirá em outra aba.' })
+        window.open('/', '_blank', 'noopener,noreferrer')
+      } else {
+        toast({ title: 'Não foi possível entrar', description: data.error, variant: 'destructive' })
+      }
     } finally {
       setBusyId(null)
     }
@@ -223,6 +358,13 @@ export function UsersPanel({ users, reload }: { users: AdminUser[]; reload: () =
         <CardTitle className="flex flex-wrap items-center gap-2 text-sm text-slate-200">
           <UserCog className="h-4 w-4 text-amber-400" />
           Usuários ({filtered.length})
+          <Button
+            onClick={() => setCreateOpen(true)}
+            size="sm"
+            className="bg-emerald-600 font-bold text-white hover:bg-emerald-700"
+          >
+            <Plus className="mr-1.5 h-3.5 w-3.5" /> Criar usuário
+          </Button>
           <Button
             onClick={exportCsv}
             size="sm"
@@ -404,6 +546,11 @@ export function UsersPanel({ users, reload }: { users: AdminUser[]; reload: () =
                   </DetailLine>
                 )}
                 {detail.authEmail && <DetailLine label="Login da conta">{detail.authEmail}</DetailLine>}
+                {detail.customPlanId && (
+                  <DetailLine label="Plano customizado">
+                    {plans.find((p) => p.id === detail.customPlanId)?.name ?? detail.customPlanId}
+                  </DetailLine>
+                )}
                 {detail.ident && <DetailLine label="Identificador">{detail.ident}</DetailLine>}
                 {detail.adminGrant && <DetailLine label="Acesso manual">sim (vitalício)</DetailLine>}
               </div>
@@ -430,6 +577,24 @@ export function UsersPanel({ users, reload }: { users: AdminUser[]; reload: () =
 
               <DialogFooter className="flex-wrap gap-2 sm:justify-between">
                 <div className="flex flex-wrap gap-1.5">
+                  <Button size="sm" onClick={() => {
+                    setEditDraft({
+                      u: detail,
+                      name: detail.name ?? '',
+                      email: detail.email ?? '',
+                      status: detail.effStatus === 'banned' ? 'expired' : detail.effStatus,
+                      planId: detail.customPlanId ?? '',
+                    })
+                    setPwDraft('')
+                    setEditOpen(true)
+                  }} disabled={busyId === detail.id}
+                    className="bg-amber-400 font-black text-slate-950 hover:bg-amber-300">
+                    <Pencil className="mr-1.5 h-3.5 w-3.5" /> Editar dados / plano / senha
+                  </Button>
+                  <Button size="sm" onClick={() => void impersonate(detail)} disabled={busyId === detail.id}
+                    variant="outline" className="border-sky-700 bg-sky-950 text-sky-200 hover:bg-sky-900">
+                    <LogIn className="mr-1.5 h-3.5 w-3.5" /> Entrar como
+                  </Button>
                   <Button size="sm" onClick={() => void act(detail, 'extend_trial', 7)} disabled={busyId === detail.id}
                     className="bg-sky-600 font-bold text-white hover:bg-sky-700">
                     <CalendarClock className="mr-1.5 h-3.5 w-3.5" /> +7 dias de teste
@@ -521,6 +686,169 @@ export function UsersPanel({ users, reload }: { users: AdminUser[]; reload: () =
               Bloquear
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      {/* Criar usuário */}
+      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        <DialogContent className="border-slate-800 bg-slate-900 text-slate-100 sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-base">Criar conta de usuário</DialogTitle>
+            <DialogDescription className="text-slate-400">
+              A conta já nasce com senha e pode entrar no app imediatamente.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <Label className="text-xs text-slate-300">E-mail *</Label>
+              <Input
+                type="email"
+                value={createDraft.email}
+                onChange={(e) => setCreateDraft({ ...createDraft, email: e.target.value })}
+                placeholder="aluno@exemplo.com"
+                className="h-9 border-slate-700 bg-slate-950 text-sm text-white"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs text-slate-300">Nome</Label>
+              <Input
+                value={createDraft.name}
+                onChange={(e) => setCreateDraft({ ...createDraft, name: e.target.value })}
+                placeholder="opcional"
+                className="h-9 border-slate-700 bg-slate-950 text-sm text-white"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs text-slate-300">Senha inicial * (mín. 6)</Label>
+              <Input
+                value={createDraft.password}
+                onChange={(e) => setCreateDraft({ ...createDraft, password: e.target.value })}
+                placeholder="será trocada pelo aluno"
+                className="h-9 border-slate-700 bg-slate-950 text-sm text-white"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs text-slate-300">Plano inicial</Label>
+              <Select value={createDraft.status} onValueChange={(v) => setCreateDraft({ ...createDraft, status: v })}>
+                <SelectTrigger className="h-9 border-slate-700 bg-slate-950 text-sm text-white">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="border-slate-700 bg-slate-900 text-white">
+                  <SelectItem value="trial">Teste grátis (7 dias completos)</SelectItem>
+                  <SelectItem value="active">Assinante ativo (vitalício, concessão admin)</SelectItem>
+                  <SelectItem value="expired">Sem acesso (plano grátis)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateOpen(false)}
+              className="border-slate-700 bg-slate-950 text-slate-200 hover:bg-slate-800">
+              Cancelar
+            </Button>
+            <Button
+              onClick={() => void createUser()}
+              disabled={busyId === 'creating' || createDraft.email.length < 5 || createDraft.password.length < 6}
+              className="bg-emerald-600 font-bold text-white hover:bg-emerald-700"
+            >
+              {busyId === 'creating' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
+              Criar conta
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Editar usuário (dados completos) */}
+      <Dialog open={editOpen} onOpenChange={(o) => !o && setEditOpen(false)}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto border-slate-800 bg-slate-900 text-slate-100 sm:max-w-md">
+          {editDraft && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="break-all text-base">Editar conta</DialogTitle>
+                <DialogDescription className="text-slate-400">
+                  {editDraft.u.email ?? editDraft.u.id} — dados, plano, plano customizado e senha.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-3">
+                <div className="space-y-1">
+                  <Label className="text-xs text-slate-300">Nome</Label>
+                  <Input
+                    value={editDraft.name}
+                    onChange={(e) => setEditDraft({ ...editDraft, name: e.target.value })}
+                    className="h-9 border-slate-700 bg-slate-950 text-sm text-white"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-slate-300">E-mail (login da conta)</Label>
+                  <Input
+                    type="email"
+                    value={editDraft.email}
+                    onChange={(e) => setEditDraft({ ...editDraft, email: e.target.value })}
+                    className="h-9 border-slate-700 bg-slate-950 text-sm text-white"
+                  />
+                  <p className="text-[10px] text-slate-500">
+                    Trocar o e-mail atualiza o índice de login (o antigo fica liberado para novo cadastro).
+                  </p>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-slate-300">Plano / status</Label>
+                  <Select value={editDraft.status} onValueChange={(v) => setEditDraft({ ...editDraft, status: v })}>
+                    <SelectTrigger className="h-9 border-slate-700 bg-slate-950 text-sm text-white">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="border-slate-700 bg-slate-900 text-white">
+                      <SelectItem value="trial">Teste grátis (reinicia 7 dias agora)</SelectItem>
+                      <SelectItem value="active">Assinante ativo (concessão admin)</SelectItem>
+                      <SelectItem value="expired">Sem acesso (plano grátis)</SelectItem>
+                      <SelectItem value="canceled">Assinatura cancelada (plano grátis)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-slate-300">Plano customizado (limites especiais)</Label>
+                  <Select value={editDraft.planId || 'nenhum'} onValueChange={(v) => setEditDraft({ ...editDraft, planId: v === 'nenhum' ? '' : v })}>
+                    <SelectTrigger className="h-9 border-slate-700 bg-slate-950 text-sm text-white">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="border-slate-700 bg-slate-900 text-white">
+                      <SelectItem value="nenhum">Nenhum (usa a config padrão do plano grátis)</SelectItem>
+                      {plans.map((p) => (
+                        <SelectItem key={p.id} value={p.id}>
+                          {p.name} · {p.simuladosPerMonth} sim/mês · {p.questionsPerDay} questões/dia
+                          {p.comments ? ' · c/ comentários' : ''}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-slate-300">Redefinir senha (opcional)</Label>
+                  <Input
+                    value={pwDraft}
+                    onChange={(e) => setPwDraft(e.target.value)}
+                    placeholder="deixe vazio para manter a senha atual (mín. 6)"
+                    className="h-9 border-slate-700 bg-slate-950 text-sm text-white"
+                  />
+                  <p className="text-[10px] text-slate-500">
+                    A senha antiga deixa de funcionar imediatamente. O aluno usa a nova senha (ou o suporte repassa).
+                  </p>
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setEditOpen(false)}
+                  className="border-slate-700 bg-slate-950 text-slate-200 hover:bg-slate-800">
+                  Cancelar
+                </Button>
+                <Button
+                  onClick={() => void saveEdit()}
+                  disabled={busyId === editDraft.u.id || (pwDraft.trim().length > 0 && pwDraft.trim().length < 6)}
+                  className="bg-amber-400 font-black text-slate-950 hover:bg-amber-300"
+                >
+                  {busyId === editDraft.u.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <KeyRound className="mr-2 h-4 w-4" />}
+                  Salvar alterações
+                </Button>
+              </DialogFooter>
+            </>
+          )}
         </DialogContent>
       </Dialog>
     </Card>

@@ -1,7 +1,7 @@
 import { NextResponse, NextRequest } from 'next/server'
 import { upsertUser } from '@/lib/blob-registry'
 import { accessOf, rateLimit, validateUserSession } from '@/lib/user-auth'
-import { FREE_PLAN } from '@/config/site'
+import { planLimitsFor } from '@/lib/content'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -16,7 +16,8 @@ export const dynamic = 'force-dynamic'
  * • assinante ativo / teste grátis → { ok: true, unlimited: true } (não registra)
  * • plano grátis (teste expirado / assinatura cancelada) → registra 1 no mês
  *   (campo genLog do usuário, com timestamps do mês corrente) e recusa com 402
- *   quando a cota de FREE_PLAN.simuladosPerMonth acabou.
+ *   quando a cota acabou. LIMITE dinâmico: config do admin ou plano customizado
+ *   atribuído à conta (planLimitsFor).
  */
 
 function monthKey(d: Date): string {
@@ -50,13 +51,17 @@ export async function POST(req: NextRequest) {
     .filter((t) => Number.isFinite(t) && monthKey(new Date(t)) === mk)
     .sort((a, b) => a - b)
 
-  if (log.length >= FREE_PLAN.simuladosPerMonth) {
+  // limite dinâmico: config do painel admin / plano customizado da conta
+  const limits = await planLimitsFor(user.customPlanId)
+  const monthlyLimit = limits.freeSimuladosPerMonth
+
+  if (log.length >= monthlyLimit) {
     return NextResponse.json(
       {
         ok: false,
         reason: 'quota',
         remaining: 0,
-        error: `Você já gerou os ${FREE_PLAN.simuladosPerMonth} simulados do plano grátis neste mês.`,
+        error: `Você já gerou os ${monthlyLimit} simulados do plano grátis neste mês.`,
       },
       { status: 402 },
     )
@@ -71,6 +76,6 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({
     ok: true,
-    remaining: Math.max(0, FREE_PLAN.simuladosPerMonth - log.length),
+    remaining: Math.max(0, monthlyLimit - log.length),
   })
 }

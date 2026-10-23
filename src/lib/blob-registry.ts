@@ -46,6 +46,8 @@ export interface RegistryUser {
   activeDeviceAt?: number
   /** timestamps (ms) dos simulados gerados no MÊS corrente — cota do plano grátis (podada na escrita) */
   genLog?: number[]
+  /** plano customizado atribuído pelo admin (id em index/plans.json) */
+  customPlanId?: string
   createdAt: number
   updatedAt: number
   lastSeen: number

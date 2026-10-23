@@ -56,6 +56,8 @@ interface ExamScreenProps {
   state: ExamState
   /** Plano grátis: comentários bloqueados + cota diária de questões */
   planFree?: boolean
+  /** Comentários bloqueados? (default = planFree; plano custom pode liberar) */
+  commentsLocked?: boolean
   /** Questões que ainda podem ser respondidas hoje (null = ilimitado) */
   questionsLeft?: number | null
   /** Abre o pop-up de assinatura quando a COTA DIÁRIA bloqueia uma resposta */
@@ -72,6 +74,7 @@ export function ExamScreen({
   pack,
   state,
   planFree = false,
+  commentsLocked,
   questionsLeft = null,
   onUpgrade,
   onCommentsUpgrade,
@@ -437,7 +440,7 @@ export function ExamScreen({
                         </div>
                       )}
                       <div className="mt-3">
-                        {planFree ? (
+                        {(commentsLocked ?? planFree) ? (
                           <CommentLocked onUpgrade={() => (onCommentsUpgrade ?? onUpgrade)?.()} />
                         ) : (
                           <div className="rounded-lg border-l-4 border-amber-400 bg-amber-50/70 px-4 py-3">

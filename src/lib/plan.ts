@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { FREE_PLAN } from '@/config/site'
-import type { AccessInfo } from '@/lib/session'
+import type { AccessInfo, PlanLimitsInfo } from '@/lib/session'
 
 /**
  * PLANO DO ALUNO + CONTADORES DE USO
@@ -28,16 +28,44 @@ export interface PlanInfo {
   trial: boolean
   /** dias cheios restantes do teste (null fora do teste) */
   trialDaysLeft: number | null
+  /** comentários de professor liberados? (premium sempre sim; custom depende) */
+  comments: boolean
 }
 
 export function planFromAccess(access: AccessInfo | null | undefined): PlanInfo {
   const status = access?.status
-  if (status === 'active') return { plan: 'premium', trial: false, trialDaysLeft: null }
+  if (status === 'active') return { plan: 'premium', trial: false, trialDaysLeft: null, comments: true }
   if (status === 'trial') {
-    return { plan: 'premium', trial: true, trialDaysLeft: access?.trialDaysLeft ?? null }
+    return { plan: 'premium', trial: true, trialDaysLeft: access?.trialDaysLeft ?? null, comments: true }
   }
   // 'expired' (teste acabou) e 'canceled' (assinatura cancelada) → plano grátis
-  return { plan: 'free', trial: false, trialDaysLeft: null }
+  // (limites da config dinâmica do admin ou de um plano customizado atribuído)
+  return { plan: 'free', trial: false, trialDaysLeft: null, comments: activePlanLimits().comments }
+}
+
+/* ------------------------------------------------------------------ */
+/* Limites dinâmicos (config do admin / plano customizado)             */
+/* ------------------------------------------------------------------ */
+
+/** Limites ativos — sobrescritos pelo /api/auth/me (config do admin) no boot do app */
+let runtimeLimitsValue: PlanLimitsInfo = {
+  simuladosPerMonth: FREE_PLAN.simuladosPerMonth,
+  questionsPerDay: FREE_PLAN.questionsPerDay,
+  comments: false,
+}
+
+export function setPlanRuntime(limits: PlanLimitsInfo | null | undefined): void {
+  if (!limits) return
+  runtimeLimitsValue = {
+    simuladosPerMonth: Math.max(0, Math.floor(limits.simuladosPerMonth ?? FREE_PLAN.simuladosPerMonth)),
+    questionsPerDay: Math.max(0, Math.floor(limits.questionsPerDay ?? FREE_PLAN.questionsPerDay)),
+    comments: limits.comments === true,
+    planName: limits.planName,
+  }
+}
+
+export function activePlanLimits(): PlanLimitsInfo {
+  return runtimeLimitsValue
 }
 
 /* ------------------------------------------------------------------ */
@@ -104,11 +132,12 @@ export interface UsageSnapshot {
 
 export function usageSnapshot(): UsageSnapshot {
   const u = readUsage()
+  const limits = activePlanLimits()
   return {
     simuladosThisMonth: u.simulados,
     answeredToday: u.answered,
-    simuladosLeft: Math.max(0, FREE_PLAN.simuladosPerMonth - u.simulados),
-    questionsLeft: Math.max(0, FREE_PLAN.questionsPerDay - u.answered),
+    simuladosLeft: Math.max(0, limits.simuladosPerMonth - u.simulados),
+    questionsLeft: Math.max(0, limits.questionsPerDay - u.answered),
   }
 }
 

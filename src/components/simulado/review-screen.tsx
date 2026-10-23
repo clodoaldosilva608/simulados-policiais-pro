@@ -26,6 +26,8 @@ interface ReviewScreenProps {
   marked: number[]
   /** Plano grátis: comentários do professor bloqueados */
   planFree?: boolean
+  /** Comentários bloqueados? (default = planFree; plano custom pode liberar) */
+  commentsLocked?: boolean
   /** Abre o pop-up de assinatura */
   onUpgrade?: () => void
   onBack: () => void
@@ -42,7 +44,7 @@ function statusOf(
   return a === q.answer ? 'acertos' : 'erros'
 }
 
-export function ReviewScreen({ pack, answers, marked, planFree = false, onUpgrade, onBack }: ReviewScreenProps) {
+export function ReviewScreen({ pack, answers, marked, planFree = false, commentsLocked, onUpgrade, onBack }: ReviewScreenProps) {
   const [filter, setFilter] = useState<FilterKey>('todas')
   const markedSet = new Set(marked)
   const QUESTIONS = pack.questions
@@ -208,7 +210,7 @@ export function ReviewScreen({ pack, answers, marked, planFree = false, onUpgrad
                     </p>
                   )}
 
-                  {planFree ? (
+                  {(commentsLocked ?? planFree) ? (
                     <div className="mt-5">
                       <CommentLocked onUpgrade={() => onUpgrade?.()} />
                     </div>

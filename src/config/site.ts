@@ -38,8 +38,10 @@ export const SITE = {
 export const FREE_PLAN = {
   /** Novos simulados gerados por mês (upload de PDF + simulado aleatório) */
   simuladosPerMonth: 5,
-  /** Questões que o aluno pode responder por dia (1ª resposta de cada questão conta) */
-  questionsPerDay: 30,
+  /** Questões que o aluno pode responder por dia (1ª resposta de cada questão conta)
+   *  NOTA: o valor EFETIVO vem da config dinâmica do painel admin (/api/config);
+   *  este é o padrão offline. Plano customizado atribuído à conta sobrescreve. */
+  questionsPerDay: 15,
 } as const
 
 /** true quando o link de pagamento da Cakto já foi configurado */

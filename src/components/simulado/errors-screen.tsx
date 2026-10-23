@@ -47,11 +47,13 @@ interface ErrorsScreenProps {
   onBack: () => void
   /** Plano grátis: comentários do professor bloqueados */
   planFree?: boolean
+  /** Comentários bloqueados? (default = planFree; plano custom pode liberar) */
+  commentsLocked?: boolean
   /** Abre o pop-up de assinatura */
   onUpgrade?: () => void
 }
 
-export function ErrorsScreen({ onBack, planFree = false, onUpgrade }: ErrorsScreenProps) {
+export function ErrorsScreen({ onBack, planFree = false, commentsLocked, onUpgrade }: ErrorsScreenProps) {
   const [items, setItems] = useState<WrongQuestion[] | null>(null)
   const [filter, setFilter] = useState<ErrorFilter>('todas')
   const [openId, setOpenId] = useState<string | null>(null)
@@ -327,7 +329,7 @@ export function ErrorsScreen({ onBack, planFree = false, onUpgrade }: ErrorsScre
                                   </>
                                 )}
                               </div>
-                              {item.comment && (planFree ? (
+                              {item.comment && ((commentsLocked ?? planFree) ? (
                                 <div className="mt-2">
                                   <CommentLocked onUpgrade={() => onUpgrade?.()} />
                                 </div>

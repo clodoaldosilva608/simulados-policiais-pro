@@ -44,7 +44,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { OFFICIAL_PACKS, STATIC_PACK } from '@/data/simulado'
-import { SITE, checkoutConfigured } from '@/config/site'
+import { SITE, FREE_PLAN, checkoutConfigured } from '@/config/site'
 import { shareApp } from '@/lib/share'
 
 interface LandingPageProps {
@@ -96,15 +96,7 @@ const FEATURES = [
   },
 ]
 
-const FAQ = [
-  {
-    q: 'O que acontece quando o teste grátis de 7 dias termina?',
-    a: 'Você continua usando o app no PLANO GRÁTIS, para sempre e sem pagar nada: até 5 simulados gerados por mês, até 30 questões por dia e sem os comentários de professor. Se quiser estudar sem limites — simulados ilimitados, questões sem cota diária e comentário em todas as questões — basta assinar o plano Assinante por R$ 17,90/mês (menos de R$ 0,60 por dia).',
-  },
-  {
-    q: 'Como funciona a assinatura de R$ 17,90/mês?',
-    a: 'A cobrança recorrente é gerenciada 100% pela Cakto, plataforma segura de pagamentos. Você pode pagar com Pix, Pix Automático (débito automático) ou cartão de crédito e cancelar quando quiser, direto no seu e-mail de compra — sem multa e sem burocracia.',
-  },
+const FAQ_STATIC = [
   {
     q: 'Como recebo meu acesso depois de pagar?',
     a: 'É automático: na tela “Já sou assinante”, informe o MESMO e-mail que você usou no pagamento na Cakto. O app confirma sua assinatura ativa na hora e libera todo o conteúdo neste aparelho. Também é possível ativar com um código de acesso, se você tiver um.',
@@ -128,6 +120,46 @@ const FAQ = [
 ]
 
 export function LandingPage({ onEnterAccess, onStartTrial }: LandingPageProps) {
+  // CONFIG DINÂMICA (painel admin): preço, dias de teste e limites do plano grátis
+  const [cfg, setCfg] = useState({
+    price: SITE.price,
+    trialDays: SITE.trialDays,
+    simulados: FREE_PLAN.simuladosPerMonth,
+    questions: FREE_PLAN.questionsPerDay,
+    checkoutUrl: SITE.checkoutUrl,
+  })
+  useEffect(() => {
+    let alive = true
+    fetch('/api/config')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { config?: { price?: string; trialDays?: number; freeSimuladosPerMonth?: number; freeQuestionsPerDay?: number; checkoutUrl?: string } } | null) => {
+        if (!alive || !d?.config) return
+        setCfg({
+          price: d.config.price ?? SITE.price,
+          trialDays: d.config.trialDays ?? SITE.trialDays,
+          simulados: d.config.freeSimuladosPerMonth ?? FREE_PLAN.simuladosPerMonth,
+          questions: d.config.freeQuestionsPerDay ?? FREE_PLAN.questionsPerDay,
+          checkoutUrl: d.config.checkoutUrl || SITE.checkoutUrl,
+        })
+      })
+      .catch(() => {})
+    return () => {
+      alive = false
+    }
+  }, [])
+
+  const faqItems = [
+    {
+      q: `O que acontece quando o teste grátis de ${cfg.trialDays} dias termina?`,
+      a: `Você continua usando o app no PLANO GRÁTIS, para sempre e sem pagar nada: até ${cfg.simulados} simulados gerados por mês, até ${cfg.questions} questões por dia e sem os comentários de professor. Se quiser estudar sem limites — simulados ilimitados, questões sem cota diária e comentário em todas as questões — basta assinar o plano Assinante por ${cfg.price}/mês (menos de R$ 0,60 por dia).`,
+    },
+    {
+      q: `Como funciona a assinatura de ${cfg.price}/mês?`,
+      a: 'A cobrança recorrente é gerenciada 100% pela Cakto, plataforma segura de pagamentos. Você pode pagar com Pix, Pix Automático (débito automático) ou cartão de crédito e cancelar quando quiser, direto no seu e-mail de compra — sem multa e sem burocracia.',
+    },
+    ...FAQ_STATIC,
+  ]
+
   const [paywallHint, setPaywallHint] = useState(false)
 
   // MODO DUPLA — desafio recebido pelo link (?desafio=X&de=Nome):
@@ -158,7 +190,7 @@ export function LandingPage({ onEnterAccess, onStartTrial }: LandingPageProps) {
 
   const handleSubscribe = () => {
     if (checkoutConfigured()) {
-      window.open(SITE.checkoutUrl, '_blank', 'noopener,noreferrer')
+      window.open(cfg.checkoutUrl, '_blank', 'noopener,noreferrer')
     } else {
       setPaywallHint(true)
     }
@@ -381,7 +413,7 @@ export function LandingPage({ onEnterAccess, onStartTrial }: LandingPageProps) {
             Comece grátis. Assine quando <span className="text-amber-500">sentir a diferença</span>
           </h2>
           <p className="mx-auto mt-2 max-w-xl text-center text-sm leading-relaxed text-slate-500">
-            Você testa {SITE.trialDays} dias com TUDO liberado. Depois, continua no plano Grátis — ou assina para não
+            Você testa {cfg.trialDays} dias com TUDO liberado. Depois, continua no plano Grátis — ou assina para não
             colocar limite na sua aprovação.
           </p>
 
@@ -396,9 +428,9 @@ export function LandingPage({ onEnterAccess, onStartTrial }: LandingPageProps) {
               <CardContent className="p-6">
                 <ul className="space-y-2.5 text-sm text-slate-700">
                   {[
-                    `${SITE.trialDays} dias de teste com TUDO liberado (sem cartão)`,
-                    'Depois: até 5 simulados gerados por mês (PDF ou aleatório)',
-                    'Até 30 questões por dia',
+                    `${cfg.trialDays} dias de teste com TUDO liberado (sem cartão)`,
+                    `Depois: até ${cfg.simulados} simulados gerados por mês (PDF ou aleatório)`,
+                    `Até ${cfg.questions} questões por dia`,
                     'Todas as provas oficiais para explorar',
                     'Desempenho básico e histórico de tentativas',
                   ].map((item) => (
@@ -435,7 +467,7 @@ export function LandingPage({ onEnterAccess, onStartTrial }: LandingPageProps) {
               <div className="border-b border-amber-100 bg-slate-950 px-6 py-4 text-white">
                 <p className="text-sm font-bold uppercase tracking-wide text-amber-300">Assinante Pro</p>
                 <div className="mt-1 flex items-end gap-1">
-                  <p className="text-3xl font-black tracking-tight">{SITE.price}</p>
+                  <p className="text-3xl font-black tracking-tight">{cfg.price}</p>
                   <p className="pb-1 text-sm font-semibold text-slate-400">{SITE.period}</p>
                 </div>
                 <p className="text-xs text-slate-400">menos de R$ 0,60 por dia • cancele quando quiser</p>
@@ -460,7 +492,7 @@ export function LandingPage({ onEnterAccess, onStartTrial }: LandingPageProps) {
                   onClick={handleSubscribe}
                   className="mt-6 h-12 w-full bg-amber-400 text-base font-black text-slate-950 shadow-lg shadow-amber-400/25 hover:bg-amber-300"
                 >
-                  Assinar agora — {SITE.price}{SITE.period}
+                  Assinar agora — {cfg.price}{SITE.period}
                 </Button>
                 <p className="mt-2 text-center text-[11px] leading-relaxed text-slate-400">
                   Pix, Pix Automático ou cartão via Cakto • ativação na hora • sem multa por cancelamento
@@ -481,7 +513,7 @@ export function LandingPage({ onEnterAccess, onStartTrial }: LandingPageProps) {
               Perguntas frequentes
             </h2>
             <Accordion type="single" collapsible className="mt-6">
-              {FAQ.map((item, i) => (
+              {faqItems.map((item, i) => (
                 <AccordionItem key={i} value={`item-${i}`} className="border-slate-200">
                   <AccordionTrigger className="text-left text-sm font-bold text-slate-800 hover:no-underline sm:text-base">
                     {item.q}

@@ -36,7 +36,7 @@ import {
 import { questionsPerChunk, type GeneratedQuestion } from '@/lib/question-gen'
 import { getAiSettings, type AiSettings } from '@/lib/ai-settings'
 import { recordSimuladoGenerated } from '@/lib/plan'
-import { FREE_PLAN } from '@/config/site'
+import { activePlanLimits } from '@/lib/plan'
 import type { Question, TextBlock } from '@/data/types'
 
 interface UploadDialogProps {
@@ -382,7 +382,7 @@ export function UploadDialog({
       if ((simuladosLeft ?? 0) <= 0) {
         setStep('error')
         setErrorMsg(
-          `Você já gerou os ${FREE_PLAN.simuladosPerMonth} simulados do plano grátis neste mês. Assine o plano para gerar sem limite — menos de R$ 0,60 por dia.`,
+          `Você já gerou os ${activePlanLimits().simuladosPerMonth} simulados do plano grátis neste mês. Assine o plano para gerar sem limite — menos de R$ 0,60 por dia.`,
         )
         return
       }
@@ -393,7 +393,7 @@ export function UploadDialog({
           setStep('error')
           setErrorMsg(
             data.error ||
-              `Você já gerou os ${FREE_PLAN.simuladosPerMonth} simulados do plano grátis neste mês. Assine o plano para gerar sem limite.`,
+              `Você já gerou os ${activePlanLimits().simuladosPerMonth} simulados do plano grátis neste mês. Assine o plano para gerar sem limite.`,
           )
           return
         }
@@ -708,7 +708,7 @@ export function UploadDialog({
             {/* Plano grátis: lembrete da cota mensal de geração */}
             {planFree && simuladosLeft !== null && (
               <p className="rounded-lg bg-amber-50 px-3.5 py-2.5 text-xs leading-relaxed text-amber-800 ring-1 ring-amber-200">
-                Plano grátis: restam <b>{simuladosLeft} de {FREE_PLAN.simuladosPerMonth} simulados</b> para gerar
+                Plano grátis: restam <b>{simuladosLeft} de {activePlanLimits().simuladosPerMonth} simulados</b> para gerar
                 neste mês — assinantes geram ilimitados.
               </p>
             )}

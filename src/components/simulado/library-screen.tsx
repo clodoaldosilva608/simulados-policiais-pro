@@ -16,6 +16,7 @@ import {
   FileText,
   GraduationCap,
   Landmark,
+  Layers,
   LifeBuoy,
   Loader2,
   LogOut,
@@ -70,11 +71,11 @@ import {
   SheetTitle,
   SheetTrigger,
 } from '@/components/ui/sheet'
-import { SITE, FREE_PLAN } from '@/config/site'
+import { SITE } from '@/config/site'
 import { shareApp } from '@/lib/share'
 import { PROMO_COOLDOWN_DAYS, PROMO_KEYS, markPromoSession, markPromoShown, promoShownThisSession, shouldShowPromo } from '@/lib/promo'
 import type { RandomFormat } from '@/lib/random-simulado'
-import type { PlanInfo, UsageSnapshot } from '@/lib/plan'
+import { activePlanLimits, type PlanInfo, type UsageSnapshot } from '@/lib/plan'
 import { PlanUpsellDialog } from './promo-dialogs'
 import {
   OFFICIAL_PACKS,
@@ -142,6 +143,8 @@ interface LibraryScreenProps {
   onOpenAccount: () => void
   /** Abre a tela Suporte (e-mail do atendimento) */
   onOpenSupport: () => void
+  /** Abre o Banco de Questões (filtros por banca/matéria/concurso + prática) */
+  onOpenBank: () => void
   /** Abre a tela Meu desempenho (aba resumo) ou Meu histórico (aba historico) */
   onOpenPerformance: (tab: 'resumo' | 'historico') => void
   /** Abre o cronômetro Pomodoro de estudo */
@@ -288,33 +291,33 @@ function PlanCard({
         </div>
 
         <div className="p-5">
-          {/* Barras de uso */}
+          {/* Barras de uso (limites dinâmicos do painel admin / plano custom) */}
           {usage && (
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
                 <div className="flex items-center justify-between text-xs font-semibold text-slate-600">
                   <span>Simulados gerados este mês</span>
                   <span className="tabular-nums">
-                    {usage.simuladosThisMonth}/{FREE_PLAN.simuladosPerMonth}
+                    {usage.simuladosThisMonth}/{activePlanLimits().simuladosPerMonth}
                   </span>
                 </div>
                 <Progress
-                  value={(usage.simuladosThisMonth / FREE_PLAN.simuladosPerMonth) * 100}
+                  value={(usage.simuladosThisMonth / Math.max(1, activePlanLimits().simuladosPerMonth)) * 100}
                   className="mt-1.5 h-2"
-                  aria-label={`Simulados gerados: ${usage.simuladosThisMonth} de ${FREE_PLAN.simuladosPerMonth}`}
+                  aria-label={`Simulados gerados: ${usage.simuladosThisMonth} de ${activePlanLimits().simuladosPerMonth}`}
                 />
               </div>
               <div>
                 <div className="flex items-center justify-between text-xs font-semibold text-slate-600">
                   <span>Questões respondidas hoje</span>
                   <span className="tabular-nums">
-                    {usage.answeredToday}/{FREE_PLAN.questionsPerDay}
+                    {usage.answeredToday}/{activePlanLimits().questionsPerDay}
                   </span>
                 </div>
                 <Progress
-                  value={(usage.answeredToday / FREE_PLAN.questionsPerDay) * 100}
+                  value={(usage.answeredToday / Math.max(1, activePlanLimits().questionsPerDay)) * 100}
                   className="mt-1.5 h-2"
-                  aria-label={`Questões hoje: ${usage.answeredToday} de ${FREE_PLAN.questionsPerDay}`}
+                  aria-label={`Questões hoje: ${usage.answeredToday} de ${activePlanLimits().questionsPerDay}`}
                 />
               </div>
             </div>
@@ -331,7 +334,7 @@ function PlanCard({
             <li className="flex items-start gap-2">
               <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
               <span>
-                Você ainda tem <b className="text-slate-800">{usage ? usage.simuladosLeft : FREE_PLAN.simuladosPerMonth} simulados</b> para gerar neste mês
+                Você ainda tem <b className="text-slate-800">{usage ? usage.simuladosLeft : activePlanLimits().simuladosPerMonth} simulados</b> para gerar neste mês
                 (PDF ou aleatório)
               </span>
             </li>
@@ -495,6 +498,7 @@ export function LibraryScreen({
   onManageAccess,
   onOpenAccount,
   onOpenSupport,
+  onOpenBank,
   onOpenPerformance,
   onOpenPomodoro,
   onOpenErrors,
@@ -823,6 +827,15 @@ export function LibraryScreen({
                     onClick={() => {
                       setMenuOpen(false)
                       onOpenErrors()
+                    }}
+                  />
+                  <MenuItem
+                    icon={Layers}
+                    label="Banco de Questões"
+                    hint="Filtre por banca, matéria e concurso"
+                    onClick={() => {
+                      setMenuOpen(false)
+                      onOpenBank()
                     }}
                   />
                   <MenuItem
@@ -1471,7 +1484,7 @@ export function LibraryScreen({
             <p className="text-[11px] leading-relaxed text-slate-400">
               {planFree ? (
                 <>
-                  Plano grátis: restam <b>{simuladosLeft ?? FREE_PLAN.simuladosPerMonth} de {FREE_PLAN.simuladosPerMonth} simulados</b> neste mês — cada sorteio conta como 1. O sorteio acontece no seu aparelho.
+                  Plano grátis: restam <b>{simuladosLeft ?? activePlanLimits().simuladosPerMonth} de {activePlanLimits().simuladosPerMonth} simulados</b> neste mês — cada sorteio conta como 1. O sorteio acontece no seu aparelho.
                 </>
               ) : (
                 'O sorteio acontece no seu aparelho — nenhuma informação sai daqui. Cada prova nova tem questões e ordem diferentes.'

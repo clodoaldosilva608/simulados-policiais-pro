@@ -1,16 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { blobConfigured, upsertUser } from '@/lib/blob-registry'
 import { accessOf, validateUserSession } from '@/lib/user-auth'
+import { planLimitsFor } from '@/lib/content'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 /**
- * GET /api/auth/me — sessão atual + status de acesso.
+ * GET /api/auth/me — sessão atual + status de acesso + limites do plano.
  * Também funciona como HEARTBEAT (atualiza lastSeen no registro central).
  *
  * Códigos:
- *  200 {authenticated:true, access} — tudo ok neste aparelho
+ *  200 {authenticated:true, access, planLimits} — tudo ok neste aparelho
  *  401 {reason:'auth'}   — sem sessão / expirada
  *  401 {reason:'device'} — conta em uso em OUTRO aparelho (um por vez)
  *  403 {reason:'banned'|'revoked'}
@@ -43,6 +44,12 @@ export async function GET(req: NextRequest) {
     /* heartbeat não deve quebrar a leitura */
   }
 
+  const access = accessOf(user)
+  // LIMITES DO PLANO: assinante/teste = ilimitado; grátis = config dinâmica
+  // (editável no painel admin) ou plano customizado atribuído à conta.
+  const premium = access.status === 'active' || access.status === 'trial'
+  const limits = premium ? null : await planLimitsFor(user.customPlanId)
+
   return NextResponse.json({
     ok: true,
     authenticated: true,
@@ -54,6 +61,14 @@ export async function GET(req: NextRequest) {
       device: user.device,
       platform: user.platform,
     },
-    access: accessOf(user),
+    access,
+    planLimits: limits
+      ? {
+          simuladosPerMonth: limits.freeSimuladosPerMonth,
+          questionsPerDay: limits.freeQuestionsPerDay,
+          comments: limits.freeComments,
+          planName: limits.planName,
+        }
+      : null,
   })
 }

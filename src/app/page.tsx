@@ -11,6 +11,8 @@ import { PerformanceScreen, type PerfTab } from '@/components/simulado/performan
 import { PomodoroScreen } from '@/components/simulado/pomodoro-screen'
 import { ErrorsScreen } from '@/components/simulado/errors-screen'
 import { AiSettingsScreen } from '@/components/simulado/ai-settings-screen'
+import { BankScreen } from '@/components/simulado/bank-screen'
+import { PopupLayer } from '@/components/simulado/popup-layer'
 import { WelcomeScreen, type AttemptInfo } from '@/components/simulado/welcome-screen'
 import { ExamScreen } from '@/components/simulado/exam-screen'
 import { ResultsScreen } from '@/components/simulado/results-screen'
@@ -43,9 +45,11 @@ import {
 import { buildRandomPack, type RandomFormat } from '@/lib/random-simulado'
 import { answeredThisWeek } from '@/lib/weekly-goal'
 import {
+  activePlanLimits,
   planFromAccess,
   recordAnswered,
   recordSimuladoGenerated,
+  setPlanRuntime,
   usageSnapshot,
   type PlanInfo,
 } from '@/lib/plan'
@@ -115,7 +119,7 @@ function displayNameOf(user: { name?: string; email?: string } | null | undefine
     .join(' ')
 }
 
-type Phase = 'landing' | 'access' | 'library' | 'conta' | 'suporte' | 'desempenho' | 'pomodoro' | 'erros' | 'ia' | 'welcome' | 'exam' | 'results' | 'review'
+type Phase = 'landing' | 'access' | 'library' | 'banco' | 'conta' | 'suporte' | 'desempenho' | 'pomodoro' | 'erros' | 'ia' | 'welcome' | 'exam' | 'results' | 'review'
 
 const storageKeyFor = (docId: string) => `simulado-${docId}`
 
@@ -264,9 +268,15 @@ export default function Home() {
   const [accessMode, setAccessMode] = useState<'registrar' | 'entrar'>('registrar')
 
   // PLANO DO ALUNO: assinante/teste = premium (tudo liberado); expirado ou
-  // assinatura cancelada = plano grátis (limites do FREE_PLAN na lib/plan.ts)
+  // assinatura cancelada = plano grátis (limites dinâmicos do admin em lib/plan.ts)
   const plan: PlanInfo = planFromAccess(session.access)
   const planFree = plan.plan === 'free'
+  // limites dinâmicos vindos do /api/auth/me (config do admin ou plano custom)
+  useEffect(() => {
+    if (session.planLimits) setPlanRuntime(session.planLimits)
+  }, [session.planLimits])
+  // comentários: premium sempre liberados; grátis/custom conforme config
+  const commentsLocked = planFree && !activePlanLimits().comments
   const usage = planFree ? usageSnapshot() : null
 
   // Pop-up de upgrade aberto a partir das telas de estudo (quota/comentários)
@@ -463,6 +473,15 @@ export default function Home() {
     }
   }, [planFree])
 
+  /** BANCO DE QUESTÕES: prática com questões filtradas (não conta como simulado gerado — a cota diária de questões é respeitada no exame) */
+  const handleBankPractice = useCallback((practicePack: SimuladoPack) => {
+    setPack(practicePack)
+    setAttempts([])
+    setSavedMeta(null)
+    setState(null)
+    setPhase('welcome')
+  }, [])
+
   const handleStart = (name: string, mode: ExamMode) => {
     if (!pack) return
     setState(freshState(name, mode))
@@ -601,16 +620,19 @@ export default function Home() {
       )
     }
     return (
-      <LandingPage
-        onEnterAccess={() => {
-          setAccessMode('entrar')
-          setPhase('access')
-        }}
-        onStartTrial={() => {
-          setAccessMode('registrar')
-          setPhase('access')
-        }}
-      />
+      <>
+        <LandingPage
+          onEnterAccess={() => {
+            setAccessMode('entrar')
+            setPhase('access')
+          }}
+          onStartTrial={() => {
+            setAccessMode('registrar')
+            setPhase('access')
+          }}
+        />
+        <PopupLayer screen="landing" visible />
+      </>
     )
   }
 
@@ -628,6 +650,7 @@ export default function Home() {
 
   if (phase === 'library') {
     return (
+      <>
       <LibraryScreen
         docs={docs}
         loading={docsLoading}
@@ -649,6 +672,7 @@ export default function Home() {
         onManageAccess={() => setPhase('access')}
         onOpenAccount={() => setPhase('conta')}
         onOpenSupport={() => setPhase('suporte')}
+        onOpenBank={() => setPhase('banco')}
         onOpenPerformance={(tab) => {
           setPerfTab(tab)
           setPhase('desempenho')
@@ -661,32 +685,56 @@ export default function Home() {
         weekAnswered={answeredThisWeek(allAttempts)}
         onSignOut={() => void session.logout()}
       />
+      <PopupLayer screen="library" visible />
+      </>
+    )
+  }
+
+  if (phase === 'banco') {
+    return (
+      <>
+        <BankScreen
+          onBack={() => setPhase('library')}
+          plan={plan}
+          onUpgrade={(reason) => openUpsell(reason)}
+          onPractice={handleBankPractice}
+        />
+        <PopupLayer screen="banco" visible />
+        <PlanUpsellDialog open={upsell !== null} onOpenChange={(o) => !o && setUpsell(null)} reason={upsell ?? 'questions'} />
+      </>
     )
   }
 
   if (phase === 'conta') {
     return (
-      <AccountScreen
-        session={session}
-        onBack={() => setPhase('library')}
-        onManageAccess={() => setPhase('access')}
-        onOpenSupport={() => setPhase('suporte')}
-      />
+      <>
+        <AccountScreen
+          session={session}
+          onBack={() => setPhase('library')}
+          onManageAccess={() => setPhase('access')}
+          onOpenSupport={() => setPhase('suporte')}
+        />
+        <PopupLayer screen="conta" visible />
+      </>
     )
   }
 
   if (phase === 'suporte') {
     return (
-      <SupportScreen
-        onBack={() => setPhase('library')}
-        accountEmail={session.user?.email}
-        accountName={displayNameOf(session.user)}
-      />
+      <>
+        <SupportScreen
+          onBack={() => setPhase('library')}
+          accountEmail={session.user?.email}
+          accountName={displayNameOf(session.user)}
+        />
+        <PopupLayer screen="suporte" visible />
+      </>
     )
   }
 
   if (phase === 'desempenho') {
     return (
+      <>
       <PerformanceScreen
         initialTab={perfTab}
         stats={stats}
@@ -701,24 +749,37 @@ export default function Home() {
         onBack={() => setPhase('library')}
         onSubscribe={() => window.open(SITE.checkoutUrl, '_blank', 'noopener,noreferrer')}
       />
+      <PopupLayer screen="desempenho" visible />
+      </>
     )
   }
 
   if (phase === 'pomodoro') {
-    return <PomodoroScreen onBack={() => setPhase('library')} />
+    return (
+      <>
+        <PomodoroScreen onBack={() => setPhase('library')} />
+        <PopupLayer screen="pomodoro" visible />
+      </>
+    )
   }
 
   if (phase === 'erros') {
     return (
       <>
-        <ErrorsScreen onBack={() => setPhase('library')} planFree={planFree} onUpgrade={() => openUpsell('comments')} />
+        <ErrorsScreen onBack={() => setPhase('library')} planFree={planFree} commentsLocked={commentsLocked} onUpgrade={() => openUpsell('comments')} />
+        <PopupLayer screen="erros" visible />
         <PlanUpsellDialog open={upsell !== null} onOpenChange={(o) => !o && setUpsell(null)} reason={upsell ?? 'comments'} />
       </>
     )
   }
 
   if (phase === 'ia') {
-    return <AiSettingsScreen onBack={() => setPhase('library')} />
+    return (
+      <>
+        <AiSettingsScreen onBack={() => setPhase('library')} />
+        <PopupLayer screen="ia" visible />
+      </>
+    )
   }
 
   // Telas que dependem do pack
@@ -738,6 +799,7 @@ export default function Home() {
           pack={pack}
           state={state}
           planFree={planFree}
+          commentsLocked={commentsLocked}
           questionsLeft={usage ? usage.questionsLeft : null}
           onUpgrade={() => openUpsell('questions')}
           onCommentsUpgrade={() => openUpsell('comments')}
@@ -761,6 +823,7 @@ export default function Home() {
         }
         onFinish={handleFinish}
         />
+        <PopupLayer screen="exam" visible />
         <PlanUpsellDialog open={upsell !== null} onOpenChange={(o) => !o && setUpsell(null)} reason={upsell ?? 'questions'} />
       </>
     )
@@ -768,6 +831,7 @@ export default function Home() {
 
   if (phase === 'results' && state?.finished) {
     return (
+      <>
       <ResultsScreen
         pack={pack}
         state={state}
@@ -796,6 +860,8 @@ export default function Home() {
         }}
         onBackToStart={() => setPhase('welcome')}
       />
+      <PopupLayer screen="results" visible />
+      </>
     )
   }
 
@@ -807,9 +873,11 @@ export default function Home() {
           answers={state.answers}
           marked={state.marked}
           planFree={planFree}
+          commentsLocked={commentsLocked}
           onUpgrade={() => openUpsell('comments')}
           onBack={() => setPhase('results')}
         />
+        <PopupLayer screen="review" visible />
         <PlanUpsellDialog open={upsell !== null} onOpenChange={(o) => !o && setUpsell(null)} reason={upsell ?? 'comments'} />
       </>
     )
@@ -834,6 +902,7 @@ export default function Home() {
         onDiscard={handleDiscard}
         onBack={backToLibrary}
       />
+      <PopupLayer screen="welcome" visible />
       <PlanUpsellDialog open={upsell !== null} onOpenChange={(o) => !o && setUpsell(null)} reason={upsell ?? 'comments'} />
     </>
   )
