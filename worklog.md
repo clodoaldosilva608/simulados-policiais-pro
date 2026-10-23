@@ -264,3 +264,31 @@ Stage Summary:
 - POMODORO completo: configurável (foco/intervalo), auto start da próxima fase, sinal sonoro ao iniciar/encerrar, persiste entre telas e recarregamentos
 - CADERNO DE ERROS: captura automática de toda questão errada, revisão respondendo direto no caderno, marca dominadas, filtros e badge no menu
 - Workspace recuperado do GitHub após reset do ambiente
+
+---
+Task ID: 14
+Agent: main
+Task: Pop-ups assinante/compartilhar, repetição espaçada 3/7/15, gráfico de evolução semanal, meta semanal de questões, simulado aleatório, notificações/lembrete Pomodoro, modo dupla (desafio)
+
+Work Log:
+- NOVAS LIBS: lib/promo.ts (cooldown de pop-ups em localStorage spp-promo-sub-v1 3d / spp-promo-share-v1 4d + flags de sessão), lib/weekly-goal.ts (meta semanal spp-meta-semanal-v1, semana seg→dom, answeredThisWeek), lib/random-simulado.ts (sorteio local de STATIC_PACKS + PDFs prontos, dedupe por enunciado, textBlocks remapeados por pack de origem)
+- COMPARTILHAR expandido (lib/share.ts): shareChallenge() (link ?desafio=X&de=Nome + texto "Desafio aceito?"), whatsappLink/telegramLink deep links, inviteMessage()
+- POP-UP ASSINANTE (promo-dialogs.tsx SubscriberPromoDialog): headline "Você está no caminho certo. Não pare agora!", âncora "menos de R$ 0,60 por dia", 5 benefícios, bloco de empatia social ("plataforma criada para quem não pode pagar cursinho caro"), CTA âmbar "Garantir meu acesso" → Cakto + escape "Continuar estudando no teste grátis". Gatilho: results-screen 1.6s após finalizar prova, só não-assinante, cooldown 3d
+- POP-UP COMPARTILHAR (SharePromoDialog): "Estudar acompanhado rende mais!", botões WhatsApp/Telegram (deep links verificados wa.me + t.me/share), Outros apps (Web Share) e Copiar link. Gatilho: library 2.4s após 1ª prova concluída, cooldown 4d, nunca 2 pop-ups no mesmo load
+- REPETIÇÃO ESPAÇADA (local-db.ts): REVIEW_INTERVALS_DAYS=[3,7,15]; WrongQuestion ganha reviewStage (0..3) + nextReviewAt; markWrongQuestionResult: acerto → sobe nível e agenda (3/7/15d, stage 3 = dominada não volta); erro → volta pra fila imediata; recordWrongQuestions re-miss na prova → reset stage 0; reviewStatusOf migra registros antigos (timesCorrectReview>0 → mastered); countDueWrongQuestions alimenta badge do menu (= "para revisar HOJE")
+- CADERNO DE ERROS reformulado: faixa explicativa do método; filtros Todas/Hoje/Agendadas/Dominadas; badges de estado (Revisar hoje vermelho / Volta em Xd âmbar / Dominada esmeralda); contadores "X para hoje • Y agendadas • Z dominadas"; resultado da revisão explica o agendamento; botão "Responder de novo" para treino extra; estados vazios por filtro
+- POMODORO (lib/pomodoro.ts + tela): config notify/dailyReminder/reminderTime/lastReminderDay/lastFocusDay; Notification API com requestNotifyPermission; notifyPhaseEnd dispara só com aba oculta; LEMBRETE DIÁRIO "Seu Pomodoro de hoje te espera 🍅" dispara quando passou do horário, ainda não disparou hoje e não concluiu foco hoje (nota honesta: funciona com app aberto — push com app fechado exigiria serviço externo); switches "Avisos do navegador" (desabilita com hint quando permissão negada/unsupported) + "Lembrete diário" com input de horário
+- GRÁFICO DE EVOLUÇÃO (performance-screen): weeklyEvolution agrega últimas 8 semanas (seg→dom) — barras coloridas por faixa (verde ≥70, âmbar ≥50, vermelho <50), valores %, rótulos dd/mm, tendência "↑/↓ X p.p. vs semana anterior", role=img com aria-label acessível, vazio elegante quando só 1 semana tem dados
+- META SEMANAL (weekly-goal-card.tsx): card com progresso "3/50 questões (6%)", intervalo da semana, estado "Meta batida!"; editável no painel (presets 50/100/200/300 + slider 10..500, padrão 200); variant mini (sem edição) no Meu desempenho
+- SIMULADO ALEATÓRIO: botão destacado (dashed âmbar + Dices) na biblioteca + item "Simulado aleatório" no ☰; diálogo com quantidade 10/15/20/30 e modelo Misto/C/E/A–E; buildRandomPack no page.tsx abre welcome normal (prova persiste, conta no histórico/caderno/metas)
+- MODO DUPLA: results-screen ganha "Desafiar um amigo (modo dupla)" (shareChallenge com nota + nome) e "Compartilhar a plataforma"; landing lê ?desafio=X&de=Nome → banner "Desafio de Maria! Ela fez 80%... Aceita superar?" com CTA "Aceitar desafio — começar agora" (dispensável)
+- WIRING page.tsx: onRandomSimulado, weekAnswered, errorCount agora = countDueWrongQuestions, ResultsScreen recebe licenseBadge/onSubscribe/accountName
+- LINT FIX: react-hooks/set-state-in-effect → padrão setTimeout(0) no weekly-goal-card e no banner de desafio da landing
+- Deploy dpl simuladospoliciais-qf5twmt9l READY; prod HTTP 200; push GitHub c79b0c3
+- E2E PRODUÇÃO 390x844 (conta e2e.features.t14): banner desafio visível com ?desafio=80&de=Maria + CTA → tela de conta; meta semanal editada 200→50 ("0 de 50"); simulado aleatório 10 misto → 30min → prova com disciplinas misturadas (Ambiental, DPP, Geografia, DPC, Contabilidade, LEP); finalizada → POP-UP ASSINANTE apareceu (screenshot); resultados com Desafiar amigo → toast "Desafio copiado! 🏁" (fallback desktop); biblioteca → POP-UP COMPARTILHAR apareceu com wa.me/t.me verificados; caderno 2 questões "Revisar hoje" → errou de novo (voltou pra fila) → acertou → badge "Volta em 3 dias" + contadores 1 hoje/1 agendadas; desempenho: gráfico "semana de 19/10: 33%" + meta semanal 3/50; Pomodoro: switches Avisos/Lembrete presentes, permissão negada no headless → switch desabilitado com hint (gracioso); dark mode: meta semanal + caderno legíveis (screenshots); 0 erros de console
+- Limpeza: conta e2e.features.t14@gmail.com excluída via admin (login precisa de username+password)
+
+Stage Summary:
+- MONETIZAÇÃO: pop-up assinante pós-prova (CTA valor acessível, cooldown 3d) + banner de urgência já existente
+- CRESCIMENTO: pop-up compartilhar (WhatsApp/Telegram nativo), desafio por link (?desafio=&de=) na landing, botões de desafio/compartilhar no resultado
+- ENGAJAMENTO: repetição espaçada 3/7/15 no caderno, gráfico de evolução semanal, meta semanal de questões com barra, simulado aleatório configurável, notificações + lembrete diário do Pomodoro
