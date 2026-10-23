@@ -451,3 +451,26 @@ Work Log:
 Stage Summary:
 - A plataforma fecha o ciclo de correções da auditoria P0/P1 factíveis no monólito atual: IA não é mais proxy aberto (maior risco de custo), webhook de pagamento é fechado e idempotente, painel admin não expõe hash/foto/UID, aluno pode exercer a exclusão de dados (LGPD) com anti-fraude de trial intacto, headers básicos ativos e nenhum token novo sai para o GitHub
 - PENDÊNCIAS PARA O OWNER (não automatizáveis): ROTACIONAR vcp_/ghp_/PAT (vazaram no histórico git antigo mesmo removidos agora) e trocar a URL do webhook na Cakto se ela não usa ?secret=; migração para Postgres + delete/export completos ficam para a próxima fase
+
+---
+Task ID: 21
+Agent: main (Z.ai)
+Task: Criar o PLANO GRATUITO (após o teste de 7 dias) com limites reais que evidenciem o valor da assinatura, apresentado na landing e na dashboard com CTA convincente
+
+Work Log:
+- NOVO src/lib/plan.ts: planFromAccess() (trial/ativo → premium; expired/canceled → grátis), contador de uso em localStorage spp-usage-v1 com virada de mês/dia + evento global spp-usage-changed, useUsage() reativo, recordAnswered()/recordSimuladoGenerated()
+- Limites em src/config/site.ts (FREE_PLAN): 5 simulados gerados/mês (PDF novo + aleatório somados; retomada não conta) e 30 questões/dia (1ª resposta de cada questão conta); comentários de professor bloqueados
+- QUOTA SERVER-SIDE: RegistryUser.genLog (timestamps do mês) + POST /api/usage/simulado — valida sessão, trial/assinante = unlimited, grátis registra e recusa com 402 quando zera (E2E: 5×200 → 402)
+- LANDING: seção de preço substituída por comparação GRÁTIS (R$ 0, limites + sem comentários) × ASSINANTE PRO (R$17,90/mês, tudo ilimitado + comentários, selo "Mais escolhido", ancoragem <R$0,60/dia) + FAQ "o que acontece quando o teste acaba"
+- DASHBOARD: PlanCard com barras de uso (X/5 simulados, X/30 questões), comentários bloqueados e CTA "Liberar TUDO"; TrialPlanNotice ("assine antes que acabe"); badge do menu/cabeçalho mostra "Plano grátis"
+- GATES: exame bloqueia resposta com cota zerada (chip "restam X hoje" no desktop), CommentLocked em exame(estudo)/revisão/caderno de erros, "Novo simulado"/simulado aleatório abrem PlanUpsellDialog quando sem cota, upload chama quota server antes de gerar
+- PlanUpsellDialog (promo-dialogs) com copy por motivo: questions/simulados/comments + benefícios + ancoragem de preço + "Continuar no plano grátis"
+- page.tsx: conta autenticada SEMPRE entra no app (expired/canceled = free em vez de ser expulsa para a tela de acesso); onAnswer registra cota; aleatório registra simulado gerado
+- 2 bugs pegos no E2E e corrigidos: plural "questõe"→"questões" no welcome e comentário bloqueado no exame abria motivo errado (agora onCommentsUpgrade → 'comments')
+- Deploy READY 2× (dpl pc4y09yg7 e k3vuntd3u), prod HTTP 200; E2E produção 390x844 completo (landing→cadastro→trial premium com comentário visível→admin cancel→plano grátis com card/badge/meters→comentário bloqueado→limite diário→upsell simulados→quota server 402); contas de teste excluídas via admin; console limpo
+- Push GitHub b6a710a (29b3f3f..b6a710a)
+
+Stage Summary:
+- A plataforma tem agora um funil de monetização completo: 7 dias com tudo liberado → plano Grátis permanente e limitado (5 simulados/mês, 30 questões/dia, sem comentários) → assinatura R$17,90/mês ilimitada
+- Limites visíveis na landing (comparação de planos) e na dashboard (card do plano com uso em tempo real), com CTA de alta conversão em todos os pontos de bloqueio
+- Quota de geração reforçada no servidor (custo de IA protegido) e no cliente (offline); comentários são o diferencial premium em todas as telas de estudo
