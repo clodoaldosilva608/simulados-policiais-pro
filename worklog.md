@@ -495,3 +495,24 @@ Stage Summary:
 - Painel /admin agora exige exclusivamente Login: clodoaldo608@gmail.com / Senha: Policial88677488 (hash scrypt em env var sensível; credenciais antigas invalidadas em produção)
 - Sessão admin segue 12h httpOnly assinada por HMAC; rate limit de 8 tentativas/15min por IP mantido
 - Pendência owner (inalterada): rotacionar tokens que vazaram no histórico git antigo (vcp_/ghp_/PAT)
+
+---
+Task ID: 23
+Agent: main (Z.ai)
+Task: Expandir o painel admin para um CMS completo (CRUD usuários/planos/pop-ups/materiais/questões) + criar Banco de Questões estilo Qconcursos no app com plano grátis de 15 questões/dia
+
+Work Log:
+- ARQUITETURA: novo content store (src/lib/content.ts) em Vercel Blob com arquivos segregados: index/questions.json, materials.json, popups.json, plans.json, app-config.json — limites sanitizados no servidor (cap 20k questões, 500/import)
+- ROTAS NOVAS (11): /api/questions (aluno, autenticada, filtros banca/matéria/concurso/nível/ano/busca + sample aleatório + facets), /api/materials, /api/popups?screen=, /api/config (pública), admin: /questions (+import CSV com parser de aspas/; ou ,), /materials (upload multipart ≤4MB + link externo + delete/remove blob), /popups, /plans, /config (PUT)
+- ADMIN: 7 abas — Usuários (criar conta com plano inicial, editar nome/e-mail/status/plano custom, reset de senha, "Entrar como" = impersonação com Set-Cookie de sessão do aluno carregando o activeDevice da conta, excluir), Questões (CRUD + importação CSV + modelo para download + filtros), Materiais (upload/link), Pop-ups (onde: 13 telas; quando: período; quantas vezes: once/session/daily/always + atraso + cor), Planos (config dinâmica do app: preço, teste, limites, checkout, suporte, comentários free + planos customizados), Eventos, Ajustes
+- AÇÕES NOVAS /api/admin/users: create (valida e-mail único + senha ≥6 + claim índice), update (changeAccountEmail com índice), set_password (scrypt), set_status, set_plan (customPlanId), impersonate (trilha admin_impersonation)
+- APP DO ALUNO: aba "Banco de Questões" no menu — filtros com facets, busca, listagem paginada, prática 10/20/30 questões que vira SimuladoPack (bankToPack) e REAPROVEITA todo o fluxo existente (welcome→exame→resultado→revisão→caderno de erros→métricas) + aba Materiais com abrir/baixar; PopupLayer montada em todas as 13 fases com frequência por usuário em localStorage (spp-popups-v1) + sessão
+- PLANOS DINÂMICOS: /api/auth/me devolve planLimits (custom > config > default); plan.ts setPlanRuntime/activePlanLimits; cota server-side (/api/usage/simulado) e client usam o mesmo limite; FREE_PLAN.questionsPerDay 30→15; commentsLocked propagado a exam/review/errors (plano custom pode liberar comentários); landing 100% dinâmica (fetch /api/config: preço, dias de teste, limites, checkout, FAQ)
+- E2E PRODUÇÃO (390×844 + desktop): admin login → 7 abas ✓; seed importado 53 questões originais (CEBRASPE/FCC/FGV/VUNESP/IBFC × 10 matérias × PF/PRF/PC/PM/Polícia Penal, certo/errado + múltipla escolha com comentários) ✓; pop-up criado no admin EXIBIU no painel do aluno ✓; material por link apareceu no app ✓; criar usuário → impersonar → app aberto como aluno ✓; banco 53 questões → prática 10 → exame estudo → resposta certa + comentário (trial) → resultado 10% ✓; set_status=expired → plano grátis com badge "hoje: 15" + comentários bloqueados + upsell na revisão ✓; conta de teste excluída via admin no fim
+- Deploy: dpl simuladospoliciais-4ejm8uege READY, prod HTTP 200, /api/config no ar; push GitHub 89da92a..f2924b3 (36 arquivos, +4935 linhas)
+
+Stage Summary:
+- O painel /admin agora é o centro de comando completo da plataforma: usuários (criar/editar/excluir/reset senha/impersonar), banco de questões (CRUD + CSV), materiais (PDF/link), pop-ups segmentados (onde/quando/quantas vezes), planos customizados e TODA a configuração do app (preço, teste, limites, checkout, suporte) em tempo real
+- O aluno ganhou o "Qconcursos" interno: aba Banco de Questões com filtros por banca/matéria/concurso/nível/ano, prática aleatória reaproveitando o fluxo completo de simulado, materiais de estudo e pop-ups do admin
+- Plano grátis unificado em 15 questões/dia (cota client + servidor + landing + dashboard, tudo editável no admin); plano pago ilimitado com comentários como diferencial
+- Pendências: rotacionar tokens antigos (vcp_/ghp_); migrar content stores para Postgres na escala de 10k+ usuários; expandir o banco de questões via CSV (template no painel)
