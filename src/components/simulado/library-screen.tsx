@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
 import {
   AlertTriangle,
@@ -10,6 +10,7 @@ import {
   CheckCircle2,
   ChevronRight,
   Crown,
+  Dices,
   FilePlus2,
   FileText,
   GraduationCap,
@@ -42,6 +43,14 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -61,6 +70,8 @@ import {
 } from '@/components/ui/sheet'
 import { SITE } from '@/config/site'
 import { shareApp } from '@/lib/share'
+import { PROMO_COOLDOWN_DAYS, PROMO_KEYS, markPromoSession, markPromoShown, promoShownThisSession, shouldShowPromo } from '@/lib/promo'
+import type { RandomFormat } from '@/lib/random-simulado'
 import {
   OFFICIAL_PACKS,
   STATIC_PACK,
@@ -71,6 +82,8 @@ import {
 } from '@/data/simulado'
 import { UploadDialog } from './upload-dialog'
 import { TrialCountdown } from './trial-countdown'
+import { SharePromoDialog } from './promo-dialogs'
+import { WeeklyGoalCard } from './weekly-goal-card'
 import {
   FONT_SIZES,
   getFontSize,
@@ -123,6 +136,10 @@ interface LibraryScreenProps {
   onOpenErrors: () => void
   /** Quantidade de questões no caderno de erros (badge do menu) */
   errorCount?: number
+  /** Gera e abre um simulado aleatório com as opções escolhidas */
+  onRandomSimulado: (opts: { count: number; format: RandomFormat }) => void
+  /** Questões respondidas na semana corrente (meta semanal) */
+  weekAnswered?: number
   /** Encerra a sessão nesta conta/aparelho (menu hambúrguer) */
   onSignOut: () => void
 }
@@ -337,6 +354,8 @@ export function LibraryScreen({
   onOpenPomodoro,
   onOpenErrors,
   errorCount,
+  onRandomSimulado,
+  weekAnswered,
   onSignOut,
 }: LibraryScreenProps) {
   const [menuOpen, setMenuOpen] = useState(false)
@@ -351,6 +370,35 @@ export function LibraryScreen({
   const [dragOver, setDragOver] = useState(false)
   const [formatFilter, setFormatFilter] = useState<FormatFilter>('todos')
   const dropCount = useRef(0)
+
+  // Simulado aleatório (diálogo de opções)
+  const [randomOpen, setRandomOpen] = useState(false)
+  const [randomCount, setRandomCount] = useState(20)
+  const [randomFormat, setRandomFormat] = useState<RandomFormat>('misto')
+  const [randomLoading, setRandomLoading] = useState(false)
+
+  // Pop-up "compartilhe com amigos e grupos de estudo": aparece no painel
+  // depois da 1ª prova concluída, com resfriamento de 4 dias (nunca dois
+  // pop-ups no mesmo carregamento do app).
+  const [shareOpen, setShareOpen] = useState(false)
+  useEffect(() => {
+    if ((stats?.attempts ?? 0) < 1) return
+    const id = window.setTimeout(() => {
+      if (promoShownThisSession('share')) return
+      if (!shouldShowPromo(PROMO_KEYS.share, PROMO_COOLDOWN_DAYS.share)) return
+      markPromoSession('share')
+      markPromoShown(PROMO_KEYS.share)
+      setShareOpen(true)
+    }, 2400)
+    return () => window.clearTimeout(id)
+  }, [stats?.attempts])
+
+  const handleRandom = () => {
+    setRandomLoading(true)
+    onRandomSimulado({ count: randomCount, format: randomFormat })
+    // O loading real passa a valer na troca de tela; destrava por segurança
+    window.setTimeout(() => setRandomLoading(false), 3000)
+  }
 
   const openNewUpload = () => {
     setResumeDocId(null)
@@ -574,6 +622,15 @@ export function LibraryScreen({
                     }}
                   />
                   <MenuItem
+                    icon={Dices}
+                    label="Simulado aleatório"
+                    hint="Prova sorteada das provas + PDFs"
+                    onClick={() => {
+                      setMenuOpen(false)
+                      setRandomOpen(true)
+                    }}
+                  />
+                  <MenuItem
                     icon={Timer}
                     label="Pomodoro"
                     hint="Foco com intervalos e sinal sonoro"
@@ -773,6 +830,10 @@ export function LibraryScreen({
                   Polícia Penal) ou transforme um PDF em simulado — seus acertos e erros aparecerão aqui.
                 </p>
               )}
+              {/* Meta semanal de questões (gamificação) */}
+              <div className="mt-4">
+                <WeeklyGoalCard answered={weekAnswered ?? 0} />
+              </div>
               {/* Compartilhar o app com os amigos */}
               <button
                 type="button"
@@ -828,6 +889,24 @@ export function LibraryScreen({
               </button>
             ))}
           </div>
+
+          {/* Simulado aleatório — prova sorteada de todas as fontes */}
+          <button
+            type="button"
+            onClick={() => setRandomOpen(true)}
+            className="mt-4 flex w-full items-center gap-3 rounded-2xl border-2 border-dashed border-amber-400 bg-amber-400/10 px-5 py-4 text-left transition-colors hover:bg-amber-400/20"
+          >
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-amber-400 text-slate-950">
+              <Dices className="h-6 w-6" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-bold text-slate-900">Simulado aleatório</p>
+              <p className="truncate text-xs text-slate-500">
+                Prova sorteada na hora de todas as provas oficiais + seus PDFs — treino diferente todo dia
+              </p>
+            </div>
+            <ChevronRight className="h-4 w-4 shrink-0 text-amber-600" />
+          </button>
 
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
             {officialPacks.map((pack, i) => (
@@ -1117,6 +1196,82 @@ export function LibraryScreen({
         initialFile={initialFile}
         onCompleted={onUploadCompleted}
       />
+
+      {/* Dialog do simulado aleatório */}
+      <Dialog open={randomOpen} onOpenChange={setRandomOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Dices className="h-5 w-5 text-amber-600" /> Simulado aleatório
+            </DialogTitle>
+            <DialogDescription>
+              Sorteamos uma prova inédita com questões de todas as provas oficiais (PF, PC, PM, PRF, Polícia Penal),
+              do simulado do app e dos PDFs que você enviou. Ideal para treinar em condições variadas.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Quantidade de questões</p>
+              <div className="mt-2 grid grid-cols-4 gap-2">
+                {[10, 15, 20, 30].map((n) => (
+                  <button
+                    key={n}
+                    type="button"
+                    aria-pressed={randomCount === n}
+                    onClick={() => setRandomCount(n)}
+                    className={`h-10 rounded-lg border text-sm font-bold transition-colors ${
+                      randomCount === n
+                        ? 'border-slate-900 bg-slate-900 text-white'
+                        : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-100'
+                    }`}
+                  >
+                    {n}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Modelo de resposta</p>
+              <div className="mt-2 grid grid-cols-3 gap-2">
+                {(
+                  [
+                    ['misto', 'Misto'],
+                    ['certo_errado', 'Certo/Errado'],
+                    ['multipla_escolha', 'A, B, C, D, E'],
+                  ] as [RandomFormat, string][]
+                ).map(([key, label]) => (
+                  <button
+                    key={key}
+                    type="button"
+                    aria-pressed={randomFormat === key}
+                    onClick={() => setRandomFormat(key)}
+                    className={`h-10 rounded-lg border text-xs font-bold transition-colors ${
+                      randomFormat === key
+                        ? 'border-slate-900 bg-slate-900 text-white'
+                        : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-100'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <p className="text-[11px] leading-relaxed text-slate-400">
+              O sorteio acontece no seu aparelho — nenhuma informação sai daqui. Cada prova nova tem questões e ordem
+              diferentes.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button onClick={handleRandom} disabled={randomLoading} className="h-12 w-full bg-amber-400 text-base font-black text-slate-950 hover:bg-amber-300">
+              {randomLoading ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <Dices className="mr-2 h-5 w-5" />}
+              Sortear minha prova
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Pop-up de compartilhar com amigos e grupos de estudo */}
+      <SharePromoDialog open={shareOpen} onOpenChange={setShareOpen} />
 
       {/* Confirmação de exclusão */}
       <AlertDialog open={Boolean(deleteTarget)} onOpenChange={(o) => !o && setDeleteTarget(null)}>

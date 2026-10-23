@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import {
   Award,
@@ -9,6 +10,8 @@ import {
   Eye,
   Flag,
   RotateCcw,
+  Share2,
+  Swords,
   Target,
   TrendingUp,
   Trophy,
@@ -33,6 +36,9 @@ import {
   type ExamState,
   type SimuladoPack,
 } from '@/data/simulado'
+import { PROMO_COOLDOWN_DAYS, PROMO_KEYS, markPromoSession, markPromoShown, promoShownThisSession, shouldShowPromo } from '@/lib/promo'
+import { shareApp, shareChallenge } from '@/lib/share'
+import { SubscriberPromoDialog } from './promo-dialogs'
 
 interface ResultsScreenProps {
   pack: SimuladoPack
@@ -40,6 +46,12 @@ interface ResultsScreenProps {
   onReview: () => void
   onRedo: () => void
   onBackToStart: () => void
+  /** Estado da licença (pop-up assinante só aparece para não-assinantes) */
+  licenseBadge?: { active: boolean; trialDaysLeft: number | null; trialEndsAt?: string | null }
+  /** Abre o checkout da assinatura */
+  onSubscribe?: () => void
+  /** Primeiro nome do candidato (link de desafio) */
+  accountName?: string
 }
 
 function barColor(pct: number) {
@@ -54,7 +66,7 @@ function chipColor(pct: number) {
   return 'bg-red-100 text-red-800'
 }
 
-export function ResultsScreen({ pack, state, onReview, onRedo, onBackToStart }: ResultsScreenProps) {
+export function ResultsScreen({ pack, state, onReview, onRedo, onBackToStart, licenseBadge, onSubscribe, accountName }: ResultsScreenProps) {
   const TOTAL_QUESTIONS = pack.questions.length
   const result = computePackResults(pack, state.answers)
   const markedCount = state.marked.length
@@ -62,6 +74,21 @@ export function ResultsScreen({ pack, state, onReview, onRedo, onBackToStart }: 
   const passed = result.pct >= pack.passPct
   const best = [...result.bySubject].sort((a, b) => b.pct - a.pct)[0]
   const worst = [...result.bySubject].sort((a, b) => a.pct - b.pct)[0]
+
+  // POP-UP ASSINANTE: melhor momento é logo após a prova concluída (aluno
+  // engajado), com resfriamento de 3 dias e nunca para quem já assinou.
+  const [subOpen, setSubOpen] = useState(false)
+  useEffect(() => {
+    if (licenseBadge?.active) return
+    const id = window.setTimeout(() => {
+      if (promoShownThisSession('sub')) return
+      if (!shouldShowPromo(PROMO_KEYS.subscriber, PROMO_COOLDOWN_DAYS.subscriber)) return
+      markPromoSession('sub')
+      markPromoShown(PROMO_KEYS.subscriber)
+      setSubOpen(true)
+    }, 1600)
+    return () => window.clearTimeout(id)
+  }, [licenseBadge?.active])
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -229,8 +256,45 @@ export function ResultsScreen({ pack, state, onReview, onRedo, onBackToStart }: 
               Voltar ao início
             </Button>
           </div>
+
+          {/* Compartilhar resultado: modo dupla + convite */}
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <button
+              type="button"
+              onClick={() => shareChallenge({ pct: result.pct, fromName: accountName, packTitle: pack.title })}
+              className="flex items-center gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-left transition-colors hover:bg-amber-100"
+            >
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-900 text-amber-300">
+                <Swords className="h-4.5 w-4.5" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-bold text-slate-900">Desafiar um amigo (modo dupla)</p>
+                <p className="truncate text-xs text-slate-500">Envie o link do desafio: quem tira nota maior ganha</p>
+              </div>
+            </button>
+            <button
+              type="button"
+              onClick={() => shareApp()}
+              className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-left transition-colors hover:bg-slate-50"
+            >
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-400 text-slate-950">
+                <Share2 className="h-4.5 w-4.5" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-bold text-slate-900">Compartilhar a plataforma</p>
+                <p className="truncate text-xs text-slate-500">Chame os amigos e o grupo de estudos</p>
+              </div>
+            </button>
+          </div>
         </motion.div>
       </main>
+
+      {/* Pop-up assinante (CTA de valor acessível) */}
+      <SubscriberPromoDialog
+        open={subOpen}
+        onOpenChange={setSubOpen}
+        onSubscribe={() => onSubscribe?.()}
+      />
     </div>
   )
 }

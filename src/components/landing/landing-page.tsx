@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
 import {
   BadgeCheck,
@@ -16,10 +16,12 @@ import {
   ShieldCheck,
   Smartphone,
   Sparkles,
+  Swords,
   Target,
   Timer,
   TrendingUp,
   WifiOff,
+  X,
 } from 'lucide-react'
 import {
   Accordion,
@@ -123,6 +125,25 @@ const FAQ = [
 export function LandingPage({ onEnterAccess, onStartTrial }: LandingPageProps) {
   const [paywallHint, setPaywallHint] = useState(false)
 
+  // MODO DUPLA — desafio recebido pelo link (?desafio=X&de=Nome):
+  // mostra o banner "Fulano fez X%, aceita superar?" no topo do hero.
+  const [challenge, setChallenge] = useState<{ pct: number; from: string } | null>(null)
+  useEffect(() => {
+    // Deferido pós-pintura: a landing é SSR, o parâmetro só existe no cliente
+    const id = window.setTimeout(() => {
+      try {
+        const params = new URLSearchParams(window.location.search)
+        const pct = Number(params.get('desafio'))
+        if (!Number.isFinite(pct) || pct <= 0 || pct > 100) return
+        const from = (params.get('de') ?? '').replace(/[<>\"'\\]/g, '').trim().slice(0, 24)
+        setChallenge({ pct: Math.round(pct), from })
+      } catch {
+        /* desafio é opcional */
+      }
+    }, 0)
+    return () => window.clearTimeout(id)
+  }, [])
+
   const stats = useMemo(() => {
     const officialQuestions = OFFICIAL_PACKS.reduce((sum, p) => sum + p.questions.length, 0)
     const totalQuestions = officialQuestions + STATIC_PACK.questions.length
@@ -202,6 +223,47 @@ export function LandingPage({ onEnterAccess, onStartTrial }: LandingPageProps) {
               <p className="mt-3 text-xs text-slate-400">
                 Cria conta com e-mail e senha • Um aparelho por vez • Cancele quando quiser • Pix, Pix Automático e cartão via Cakto
               </p>
+
+              {/* Banner do desafio recebido (modo dupla) */}
+              {challenge && (
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.25 }}
+                  className="relative mt-5 max-w-xl rounded-2xl border-2 border-amber-400 bg-gradient-to-br from-amber-400/15 to-amber-400/5 px-5 py-4 shadow-lg shadow-amber-400/10"
+                >
+                  <button
+                    type="button"
+                    onClick={() => setChallenge(null)}
+                    aria-label="Dispensar desafio"
+                    className="absolute right-2.5 top-2.5 rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-slate-800 hover:text-white"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-amber-400 text-slate-950">
+                      <Swords className="h-6 w-6" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-black text-amber-300">
+                        {challenge.from ? `Desafio de ${challenge.from}!` : 'Você recebeu um desafio!'}
+                      </p>
+                      <p className="mt-0.5 text-sm leading-snug text-slate-200">
+                        {challenge.from ? `${challenge.from} fez ` : 'Fizeram '}
+                        <b className="text-white">{challenge.pct}%</b> nos simulados policiais. Aceita o desafio de
+                        superar essa nota?
+                      </p>
+                      <Button
+                        onClick={onStartTrial}
+                        className="mt-2.5 h-10 bg-amber-400 px-4 text-sm font-black text-slate-950 hover:bg-amber-300"
+                      >
+                        Aceitar desafio — começar agora
+                        <ChevronRight className="ml-1 h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
             </motion.div>
 
             {/* Carreiras */}

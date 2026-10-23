@@ -29,7 +29,9 @@ import {
 } from '@/components/ui/dialog'
 import { SITE } from '@/config/site'
 import type { LocalAttempt } from '@/lib/local-db'
+import { answeredThisWeek, startOfWeek } from '@/lib/weekly-goal'
 import { TrialCountdown } from './trial-countdown'
+import { WeeklyGoalCard } from './weekly-goal-card'
 
 export interface PerfStats {
   attempts: number
@@ -76,6 +78,47 @@ function loadMetas(): Record<string, number> {
 
 function pctColor(pct: number): string {
   return pct >= 70 ? 'text-emerald-700' : pct >= 50 ? 'text-amber-700' : 'text-red-700'
+}
+
+interface WeekBucket {
+  /** rótulo curto da semana (ex.: "12/05") */
+  label: string
+  answered: number
+  correct: number
+  pct: number | null
+}
+
+const EVOLUTION_WEEKS = 8
+
+/** Agrega o aproveitamento semana a semana (últimas 8 semanas, seg→dom) */
+function weeklyEvolution(attempts: LocalAttempt[]): WeekBucket[] {
+  const buckets: WeekBucket[] = []
+  const now = new Date()
+  // startOfWeek importado via lib weekly-goal (segunda-feira)
+  let cursor = startOfWeek(now)
+  const fmt = (d: Date) => d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
+  for (let i = EVOLUTION_WEEKS - 1; i >= 0; i--) {
+    const start = new Date(cursor)
+    start.setDate(start.getDate() - i * 7)
+    const end = new Date(start)
+    end.setDate(end.getDate() + 7)
+    let answered = 0
+    let correct = 0
+    for (const a of attempts) {
+      const t = new Date(a.createdAt).getTime()
+      if (t < start.getTime() || t >= end.getTime()) continue
+      const ans = typeof a.answered === 'number' ? a.answered : a.total
+      answered += Math.min(Math.max(ans, 0), a.total)
+      correct += Math.min(Math.max(a.correct, 0), a.total)
+    }
+    buckets.push({
+      label: fmt(start),
+      answered,
+      correct,
+      pct: answered > 0 ? Math.round((correct / answered) * 100) : null,
+    })
+  }
+  return buckets
 }
 
 function formatWhen(iso: string): string {
@@ -164,6 +207,17 @@ export function PerformanceScreen({
     const min = Date.now() - (period === '7d' ? 7 : 30) * 86_400_000
     return attempts.filter((a) => new Date(a.createdAt).getTime() >= min)
   }, [attempts, period])
+
+  /** Evolução semana a semana (gráfico de barras) */
+  const weeks = useMemo(() => weeklyEvolution(attempts), [attempts])
+  const weekAnswered = useMemo(() => answeredThisWeek(attempts), [attempts])
+  const trend = useMemo(() => {
+    const withData = weeks.filter((w) => w.pct !== null)
+    if (withData.length < 2) return null
+    const last = withData[withData.length - 1].pct!
+    const prev = withData[withData.length - 2].pct!
+    return { diff: last - prev, last }
+  }, [weeks])
 
   /** Resumo agregado do período filtrado (mesma régua do painel: % sobre respondidas) */
   const periodSummary = useMemo(() => {
@@ -255,6 +309,83 @@ export function PerformanceScreen({
                     <Progress value={stats.pct} className="mt-1.5 h-2.5" aria-label={`Taxa de acerto: ${stats.pct}%`} />
                   </CardContent>
                 </Card>
+
+                {/* Gráfico de evolução — aproveitamento semana a semana */}
+                <Card>
+                  <CardContent className="p-4">
+                    <p className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                      Evolução semana a semana
+                    </p>
+                    <p className="mt-0.5 text-[11px] text-slate-500">
+                      Aproveitamento sobre as respondidas nas últimas {EVOLUTION_WEEKS} semanas
+                    </p>
+                    {weeks.some((w) => w.pct !== null) ? (
+                      <>
+                        <div
+                          className="mt-4 flex h-32 items-end gap-1.5 sm:gap-2"
+                          role="img"
+                          aria-label={`Gráfico de evolução semanal. ${weeks
+                            .filter((w) => w.pct !== null)
+                            .map((w) => `semana de ${w.label}: ${w.pct}%`)
+                            .join(', ')}`}
+                        >
+                          {weeks.map((w) => {
+                            const barCls =
+                              w.pct === null
+                                ? 'bg-slate-200'
+                                : w.pct >= 70
+                                  ? 'bg-emerald-500'
+                                  : w.pct >= 50
+                                    ? 'bg-amber-500'
+                                    : 'bg-red-500'
+                            return (
+                              <div key={w.label} className="flex h-full min-w-0 flex-1 flex-col items-center justify-end gap-1">
+                                <span className={`text-[10px] font-black ${w.pct === null ? 'text-slate-300' : pctColor(w.pct)}`}>
+                                  {w.pct === null ? '—' : `${w.pct}%`}
+                                </span>
+                                <div
+                                  className={`w-full max-w-[26px] rounded-t-md transition-all ${barCls}`}
+                                  style={{ height: `${w.pct === null ? 3 : Math.max(6, w.pct)}%` }}
+                                  title={`${w.label}: ${w.answered} respondidas • ${w.correct} acertos`}
+                                />
+                              </div>
+                            )
+                          })}
+                        </div>
+                        <div className="mt-1.5 flex gap-1.5 sm:gap-2">
+                          {weeks.map((w) => (
+                            <span key={w.label} className="min-w-0 flex-1 text-center text-[10px] text-slate-400">
+                              {w.label}
+                            </span>
+                          ))}
+                        </div>
+                        <p className="mt-2 text-center text-[11px] text-slate-500" aria-live="polite">
+                          {trend && trend.diff !== 0 ? (
+                            trend.diff > 0 ? (
+                              <span className="font-bold text-emerald-700">
+                                ↑ {trend.diff} p.p. em relação à semana anterior — continue assim!
+                              </span>
+                            ) : (
+                              <span className="font-bold text-amber-700">
+                                ↓ {Math.abs(trend.diff)} p.p. em relação à semana anterior — bora voltar a subir
+                              </span>
+                            )
+                          ) : (
+                            'Conclua provas nas próximas semanas para acompanhar sua evolução'
+                          )}
+                        </p>
+                      </>
+                    ) : (
+                      <p className="mt-3 rounded-xl bg-slate-50 px-4 py-3 text-xs leading-relaxed text-slate-500">
+                        Quando você concluir simulados em semanas diferentes, este gráfico mostra sua evolução
+                        semana a semana — a melhor motivação visual para manter o ritmo.
+                      </p>
+                    )}
+                  </CardContent>
+                </Card>
+
+                {/* Meta semanal de questões (versão compacta) */}
+                <WeeklyGoalCard answered={weekAnswered} variant="mini" />
 
                 {stats.subjects.length > 0 && (
                   <Card>

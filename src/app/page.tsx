@@ -32,11 +32,13 @@ import {
   listAllLocalAttempts,
   hasAttemptWithId,
   recordWrongQuestions,
-  countWrongQuestions,
+  countDueWrongQuestions,
   localDocToPack,
   type LocalAttempt,
   type WrongQuestionInput,
 } from '@/lib/local-db'
+import { buildRandomPack, type RandomFormat } from '@/lib/random-simulado'
+import { answeredThisWeek } from '@/lib/weekly-goal'
 
 function statsFromAttempts(attempts: LocalAttempt[]): DashboardStats {
   // Dedupe defensivo: a mesma prova concluída no mesmo instante (±60s) conta
@@ -316,9 +318,9 @@ export default function Home() {
     }
   }, [])
 
-  /** Contador do caderno de erros (badge no menu) */
+  /** Contador do caderno de erros (badge do menu = questões para revisar HOJE) */
   const refreshErrorCount = useCallback(() => {
-    void countWrongQuestions()
+    void countDueWrongQuestions()
       .then((count) => setErrorCount(count))
       .catch(() => setErrorCount(0))
   }, [])
@@ -420,6 +422,24 @@ export default function Home() {
     setPhase('library')
     void loadDocs()
   }, [loadDocs])
+
+  /** SIMULADO ALEATÓRIO: sorteia uma prova de todas as fontes e abre */
+  const handleRandomSimulado = useCallback(async (opts: { count: number; format: RandomFormat }) => {
+    setPackLoading(true)
+    try {
+      const generated = await buildRandomPack(opts)
+      if (!generated) return
+      setPack(generated)
+      setAttempts([])
+      setSavedMeta(null)
+      setState(null)
+      setPhase('welcome')
+    } catch {
+      /* sorteio é best-effort — segue na biblioteca */
+    } finally {
+      setPackLoading(false)
+    }
+  }, [])
 
   const handleStart = (name: string, mode: ExamMode) => {
     if (!pack) return
@@ -610,6 +630,8 @@ export default function Home() {
         onOpenPomodoro={() => setPhase('pomodoro')}
         onOpenErrors={() => setPhase('erros')}
         errorCount={errorCount}
+        onRandomSimulado={(opts) => void handleRandomSimulado(opts)}
+        weekAnswered={answeredThisWeek(allAttempts)}
         onSignOut={() => void session.logout()}
       />
     )
@@ -682,6 +704,13 @@ export default function Home() {
         pack={pack}
         state={state}
         onReview={() => setPhase('review')}
+        licenseBadge={{
+          active: session.access?.status === 'active',
+          trialDaysLeft: session.access?.status === 'trial' ? (session.access.trialDaysLeft ?? 0) : null,
+          trialEndsAt: session.access?.trialEndsAt ?? null,
+        }}
+        onSubscribe={() => window.open(SITE.checkoutUrl, '_blank', 'noopener,noreferrer')}
+        accountName={displayNameOf(session.user)}
         onRedo={() => {
           try {
             window.localStorage.removeItem(storageKeyFor(pack.id))

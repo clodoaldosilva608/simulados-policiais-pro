@@ -1,0 +1,562 @@
+    80→    80→  type FontSize,
+    81→    81→  type ThemeMode,
+    82→    82→} from '@/lib/appearance'
+    83→    83→
+    84→    84→export interface SavedInfo {
+    85→    85→  finished: boolean
+    86→    86→}
+    87→    87→
+    88→    88→/** Métricas de desempenho do aluno (painel da biblioteca) */
+    89→    89→export interface DashboardStats {
+    90→    90→  attempts: number
+    91→    91→  answered: number
+    92→    92→  correct: number
+    93→    93→  wrong: number
+    94→    94→  pct: number
+    95→    95→  /** Aproveitamento por disciplina (mais respondidas primeiro) */
+    96→    96→  subjects: { name: string; correct: number; answered: number; pct: number }[]
+    97→    97→}
+    98→    98→
+    99→    99→type FormatFilter = 'todos' | 'certo_errado' | 'multipla_escolha'
+   100→   100→
+   101→   101→interface LibraryScreenProps {
+   102→   102→  docs: DocumentSummary[]
+   103→   103→  loading: boolean
+   104→   104→  savedInfo: Record<string, SavedInfo>
+   105→   105→  onOpen: (docId: string) => void
+   106→   106→  onDelete: (docId: string) => void
+   107→   107→  onUploadCompleted: () => void
+   108→   108→  /** Estado da licença: assinante ou teste grátis (com fim exato do teste) */
+   109→   109→  licenseBadge: { active: boolean; trialDaysLeft: number | null; trialEndsAt?: string | null }
+   110→   110→  /** E-mail da conta autenticada (badge do cabeçalho) */
+   111→   111→  accountEmail?: string
+   112→   112→  /** Primeiro nome do aluno (saudação no painel) */
+   113→   113→  accountName?: string
+   114→   114→  /** Métricas de acertos/erros de todos os simulados concluídos */
+   115→   115→  stats?: DashboardStats | null
+   116→   116→  /** Abre a tela de acesso/gerenciar assinatura */
+   117→   117→  onManageAccess: () => void
+   118→   118→  /** Abre a tela Meu desempenho (aba resumo) ou Meu histórico (aba historico) */
+   119→   119→  onOpenPerformance: (tab: 'resumo' | 'historico') => void
+   120→   120→  /** Abre o cronômetro Pomodoro de estudo */
+   121→   121→  onOpenPomodoro: () => void
+   122→   122→  /** Abre o caderno de erros (questões erradas para revisar) */
+   123→   123→  onOpenErrors: () => void
+   124→   124→  /** Quantidade de questões no caderno de erros (badge do menu) */
+   125→   125→  errorCount?: number
+   126→   126→  /** Encerra a sessão nesta conta/aparelho (menu hambúrguer) */
+   127→   127→  onSignOut: () => void
+   128→   128→}
+   129→   129→
+   130→   130→function formatBytes(bytes: number): string {
+   131→   131→  if (bytes < 1024) return `${bytes} B`
+   132→   132→  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`
+   133→   133→  return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+   134→   134→}
+   135→   135→
+   136→   136→/** Cores por carreira policial */
+   137→   137→const CARREIRA_STYLES: Record<string, string> = {
+   138→   138→  PF: 'bg-slate-900 text-amber-300',
+   139→   139→  PC: 'bg-amber-600 text-white',
+   140→   140→  PM: 'bg-emerald-700 text-white',
+   141→   141→  PRF: 'bg-orange-600 text-white',
+   142→   142→  'Polícia Penal': 'bg-purple-800 text-white',
+   143→   143→}
+   144→   144→
+   145→   145→const CARREIRA_ICONS: Record<string, typeof ShieldCheck> = {
+   146→   146→  PF: Landmark,
+   147→   147→  PC: ShieldCheck,
+   148→   148→  PM: ShieldCheck,
+   149→   149→  PRF: ShieldCheck,
+   150→   150→  'Polícia Penal': BadgeCheck,
+   151→   151→}
+   152→   152→
+   153→   153→function StatCard({
+   154→   154→  icon: Icon,
+   155→   155→  label,
+   156→   156→  value,
+   157→   157→  tone,
+   158→   158→}: {
+   159→   159→  icon: typeof CheckCircle2
+   160→   160→  label: string
+   161→   161→  value: string
+   162→   162→  tone: 'emerald' | 'red' | 'amber' | 'slate'
+   163→   163→}) {
+   164→   164→  const tones: Record<typeof tone, string> = {
+   165→   165→    emerald: 'bg-emerald-50 text-emerald-700',
+   166→   166→    red: 'bg-red-50 text-red-700',
+   167→   167→    amber: 'bg-amber-50 text-amber-700',
+   168→   168→    slate: 'bg-slate-100 text-slate-700',
+   169→   169→  }
+   170→   170→  return (
+   171→   171→    <div className="flex items-center gap-3 rounded-xl border border-slate-100 bg-white p-3">
+   172→   172→      <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${tones[tone]}`}>
+   173→   173→        <Icon className="h-5 w-5" />
+   174→   174→      </div>
+   175→   175→      <div className="min-w-0">
+   176→   176→        <p className="text-lg font-bold leading-tight text-slate-900">{value}</p>
+   177→   177→        <p className="truncate text-[11px] font-medium uppercase tracking-wide text-slate-500">{label}</p>
+   178→   178→      </div>
+   179→   179→    </div>
+   180→   180→  )
+   181→   181→}
+   182→   182→
+   183→   183→/** Item do menu hambúrguer (ação ou link, ex. suporte por e-mail) */
+   184→   184→function MenuItem({
+   185→   185→  icon: Icon,
+   186→   186→  label,
+   187→   187→  hint,
+   188→   188→  badge,
+   189→   189→  onClick,
+   190→   190→  href,
+   191→   191→}: {
+   192→   192→  icon: typeof UserRound
+   193→   193→  label: string
+   194→   194→  hint?: string
+   195→   195→  /** Contador destacado (ex. questões no caderno de erros) */
+   196→   196→  badge?: number
+   197→   197→  onClick: () => void
+   198→   198→  /** Quando definido, renderiza <a> em vez de botão */
+   199→   199→  href?: string
+   200→   200→}) {
+   201→   201→  const inner = (
+   202→   202→    <>
+   203→   203→      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-600">
+   204→   204→        <Icon className="h-5 w-5" />
+   205→   205→      </div>
+   206→   206→      <div className="min-w-0 flex-1">
+   207→   207→        <p className="truncate text-sm font-bold text-slate-800">{label}</p>
+   208→   208→        {hint && <p className="truncate text-xs text-slate-500">{hint}</p>}
+   209→   209→      </div>
+   210→   210→      {badge !== undefined && badge > 0 && (
+   211→   211→        <span className="flex h-6 min-w-6 shrink-0 items-center justify-center rounded-full bg-slate-900 px-1.5 text-[11px] font-black text-amber-300">
+   212→   212→          {badge > 99 ? '99+' : badge}
+   213→   213→        </span>
+   214→   214→      )}
+   215→   215→      <ChevronRight className="h-4 w-4 shrink-0 text-slate-400" />
+   216→   216→    </>
+   217→   217→  )
+   218→   218→  const cls =
+   219→   219→    'flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors hover:bg-slate-100'
+   220→   220→  return href ? (
+   221→   221→    <a href={href} onClick={onClick} className={cls}>
+   222→   222→      {inner}
+   223→   223→    </a>
+   224→   224→  ) : (
+   225→   225→    <button type="button" onClick={onClick} className={cls}>
+   226→   226→      {inner}
+   227→   227→    </button>
+   228→   228→  )
+   229→   229→}
+   230→   230→
+   231→   231→function OfficialPackCard({
+   232→   232→  pack,
+   233→   233→  saved,
+   234→   234→  onOpen,
+   235→   235→  index,
+   236→   236→}: {
+   237→   237→  pack: SimuladoPack
+   238→   238→  saved?: SavedInfo
+   239→   239→  onOpen: (id: string) => void
+   240→   240→  index: number
+   241→   241→}) {
+   242→   242→  const Icon = CARREIRA_ICONS[pack.carreira ?? ''] ?? ShieldCheck
+   243→   243→  const subjectsCount = pack.subjects.length
+   244→   244→  const formatLabel = packFormatLabel(pack)
+   245→   245→  const isCE = formatLabel === 'Certo/Errado'
+   246→   246→  return (
+   247→   247→    <motion.div
+   248→   248→      initial={{ opacity: 0, y: 10 }}
+   249→   249→      animate={{ opacity: 1, y: 0 }}
+   250→   250→      transition={{ delay: Math.min(index * 0.05, 0.25) }}
+   251→   251→    >
+   252→   252→      <Card className="flex h-full flex-col border-slate-200 transition-shadow hover:shadow-lg">
+   253→   253→        <CardContent className="flex flex-1 flex-col gap-3 p-5">
+   254→   254→          <div className="flex items-start gap-3">
+   255→   255→            <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl ${CARREIRA_STYLES[pack.carreira ?? ''] ?? 'bg-slate-900 text-amber-300'}`}>
+   256→   256→              <Icon className="h-6 w-6" />
+   257→   257→            </div>
+   258→   258→            <div className="min-w-0 flex-1">
+   259→   259→              <div className="flex flex-wrap items-center gap-2">
+   260→   260→                <h3 className="text-base font-bold leading-tight text-slate-900">{pack.title}</h3>
+   261→   261→                {pack.oficial ? (
+   262→   262→                  <Badge className="gap-1 bg-emerald-100 text-emerald-800 hover:bg-emerald-100">
+   263→   263→                    <BadgeCheck className="h-3 w-3" /> Prova oficial
+   264→   264→                  </Badge>
+   265→   265→                ) : (
+   266→   266→                  <Badge className="gap-1 bg-amber-100 text-amber-800 hover:bg-amber-100">
+   267→   267→                    <PenTool className="h-3 w-3" /> Inédito no estilo da banca
+   268→   268→                  </Badge>
+   269→   269→                )}
+   270→   270→              </div>
+   271→   271→              <p className="mt-0.5 text-sm text-slate-500">{pack.subtitle}</p>
+   272→   272→            </div>
+   273→   273→          </div>
+   274→   274→
+   275→   275→          <div className="flex flex-wrap items-center gap-2">
+   276→   276→            <Badge
+   277→   277→              variant="secondary"
+   278→   278→              className={
+   279→   279→                isCE
+   280→   280→                  ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-100'
+   281→   281→                  : 'bg-slate-100 text-slate-800 hover:bg-slate-100'
+   282→   282→              }
+   283→   283→            >
+   284→   284→              {isCE ? <CheckCheck className="mr-1 h-3.5 w-3.5" /> : <ListOrdered className="mr-1 h-3.5 w-3.5" />}
+   285→   285→              {formatLabel}
+   286→   286→            </Badge>
+   287→   287→            <Badge variant="secondary" className="bg-slate-100 text-slate-700 hover:bg-slate-100">
+   288→   288→              {pack.ano} • {pack.banca}
+   289→   289→            </Badge>
+   290→   290→            <Badge variant="secondary" className="bg-slate-100 text-slate-700 hover:bg-slate-100">
+   291→   291→              {pack.questions.length} questões
+   292→   292→            </Badge>
+   293→   293→            <Badge variant="secondary" className="bg-slate-100 text-slate-700 hover:bg-slate-100">
+   294→   294→              {subjectsCount} disciplinas
+   295→   295→            </Badge>
+   296→   296→            <Badge variant="secondary" className="bg-slate-100 text-slate-700 hover:bg-slate-100">
+   297→   297→              {formatDurationLabel(pack.durationMinutes)}
+   298→   298→            </Badge>
+   299→   299→          </div>
+   300→   300→
+   301→   301→          <div className="mt-auto flex gap-2 pt-1">
+   302→   302→            {saved && !saved.finished && (
+   303→   303→              <Button onClick={() => onOpen(pack.id)} className="flex-1 bg-emerald-600 font-bold text-white hover:bg-emerald-700">
+   304→   304→                <Play className="mr-1.5 h-4 w-4" /> Continuar
+   305→   305→              </Button>
+   306→   306→            )}
+   307→   307→            <Button
+   308→   308→              onClick={() => onOpen(pack.id)}
+   309→   309→              className={`${saved && !saved.finished ? '' : 'flex-1'} bg-slate-900 font-bold text-white hover:bg-slate-800`}
+   310→   310→            >
+   311→   311→              {saved ? 'Abrir' : (
+   312→   312→                <>
+   313→   313→                  <Play className="mr-1.5 h-4 w-4" /> Iniciar
+   314→   314→                </>
+   315→   315→              )}
+   316→   316→            </Button>
+   317→   317→          </div>
+   318→   318→        </CardContent>
+   319→   319→      </Card>
+   320→   320→    </motion.div>
+   321→   321→  )
+   322→   322→}
+   323→   323→
+   324→   324→export function LibraryScreen({
+   325→   325→  docs,
+   326→   326→  loading,
+   327→   327→  savedInfo,
+   328→   328→  onOpen,
+   329→   329→  onDelete,
+   330→   330→  onUploadCompleted,
+   331→   331→  licenseBadge,
+   332→   332→  accountEmail,
+   333→   333→  accountName,
+   334→   334→  stats,
+   335→   335→  onManageAccess,
+   336→   336→  onOpenPerformance,
+   337→   337→  onOpenPomodoro,
+   338→   338→  onOpenErrors,
+   339→   339→  errorCount,
+   340→   340→  onSignOut,
+   341→   341→}: LibraryScreenProps) {
+   342→   342→  const [menuOpen, setMenuOpen] = useState(false)
+   343→   343→  const [dialogOpen, setDialogOpen] = useState(false)
+   344→   344→  // Preferências de aparência: lidas no 1º render do cliente (o Sheet fechado
+   345→   345→  // não renderiza nada no SSR, então não há risco de mismatch de hidratação)
+   346→   346→  const [theme, setThemeState] = useState<ThemeMode>(() => getTheme())
+   347→   347→  const [fontSize, setFontSizeState] = useState<FontSize>(() => getFontSize())
+   348→   348→  const [resumeDocId, setResumeDocId] = useState<string | null>(null)
+   349→   349→  const [initialFile, setInitialFile] = useState<File | null>(null)
+   350→   350→  const [deleteTarget, setDeleteTarget] = useState<DocumentSummary | null>(null)
+   351→   351→  const [dragOver, setDragOver] = useState(false)
+   352→   352→  const [formatFilter, setFormatFilter] = useState<FormatFilter>('todos')
+   353→   353→  const dropCount = useRef(0)
+   354→   354→
+   355→   355→  const openNewUpload = () => {
+   356→   356→    setResumeDocId(null)
+   357→   357→    setInitialFile(null)
+   358→   358→    setDialogOpen(true)
+   359→   359→  }
+   360→   360→
+   361→   361→  const openResume = (docId: string) => {
+   362→   362→    setResumeDocId(docId)
+   363→   363→    setInitialFile(null)
+   364→   364→    setDialogOpen(true)
+   365→   365→  }
+   366→   366→
+   367→   367→  const handleDrop = (e: React.DragEvent) => {
+   368→   368→    e.preventDefault()
+   369→   369→    setDragOver(false)
+   370→   370→    dropCount.current = 0
+   371→   371→    const f = Array.from(e.dataTransfer.files).find(
+   372→   372→      (x) => x.type === 'application/pdf' || x.name.toLowerCase().endsWith('.pdf')
+   373→   373→    )
+   374→   374→    if (f) {
+   375→   375→      setResumeDocId(null)
+   376→   376→      setInitialFile(f)
+   377→   377→      setDialogOpen(true)
+   378→   378→    }
+   379→   379→  }
+   380→   380→
+   381→   381→  const officialPacks = useMemo(() => {
+   382→   382→    if (formatFilter === 'todos') return OFFICIAL_PACKS
+   383→   383→    return OFFICIAL_PACKS.filter((p) => p.questionFormat === formatFilter)
+   384→   384→  }, [formatFilter])
+   385→   385→
+   386→   386→  const avatarInitial = (accountName ?? '').trim().charAt(0).toUpperCase() || 'A'
+   387→   387→
+   388→   388→  const readyDocs = docs.filter((d) => d.status === 'ready')
+   389→   389→  const otherDocs = docs.filter((d) => d.status !== 'ready')
+   390→   390→
+   391→   391→  const FILTERS: { id: FormatFilter; label: string }[] = [
+   392→   392→    { id: 'todos', label: 'Todos os modelos' },
+   393→   393→    { id: 'certo_errado', label: 'Certo/Errado (C/E)' },
+   394→   394→    { id: 'multipla_escolha', label: 'A, B, C, D, E' },
+   395→   395→  ]
+   396→   396→
+   397→   397→  return (
+   398→   398→    <div className="flex min-h-screen flex-col bg-slate-50">
+   399→   399→      {/* Cabeçalho */}
+   400→   400→      <header className="sticky top-0 z-40 border-b border-slate-800 bg-slate-900 text-white shadow-lg">
+   401→   401→        <div className="mx-auto flex max-w-6xl items-center gap-3 px-4 py-3.5">
+   402→   402→          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-400 text-slate-950">
+   403→   403→            <ShieldCheck className="h-6 w-6" />
+   404→   404→          </div>
+   405→   405→          <div className="min-w-0">
+   406→   406→            <p className="truncate text-[15px] font-bold leading-tight sm:text-base">
+   407→   407→              <span className="sm:hidden">Simulados Pro</span>
+   408→   408→              <span className="hidden sm:inline">Simulados Policiais Pro</span>
+   409→   409→            </p>
+   410→   410→            <p className="hidden text-xs leading-tight text-slate-400 sm:block">
+   411→   411→              Provas oficiais (PF, PC, PM, PRF, Polícia Penal) + transforme qualquer PDF em simulado
+   412→   412→            </p>
+   413→   413→          </div>
+   414→   414→          <div className="ml-auto flex shrink-0 items-center gap-2">
+   415→   415→            <button
+   416→   416→              type="button"
+   417→   417→              onClick={onManageAccess}
+   418→   418→              aria-label="Gerenciar conta e assinatura"
+   419→   419→              title={
+   420→   420→                accountName || accountEmail
+   421→   421→                  ? `Conta: ${[accountName, accountEmail].filter(Boolean).join(' • ')}`
+   422→   422→                  : 'Gerenciar conta'}
+   423→   423→              className={`hidden shrink-0 whitespace-nowrap rounded-full px-2.5 py-1.5 text-[11px] font-bold transition-colors sm:block sm:px-3 ${
+   424→   424→                licenseBadge.active
+   425→   425→                  ? 'bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25'
+   426→   426→                  : 'bg-amber-400/15 text-amber-300 hover:bg-amber-400/25'
+   427→   427→              }`}
+   428→   428→            >
+   429→   429→              {licenseBadge.active ? (
+   430→   430→                <>
+   431→   431→                  <span className="sm:hidden">★</span>
+   432→   432→                  <span className="hidden sm:inline">★ Assinante</span>
+   433→   433→                </>
+   434→   434→              ) : licenseBadge.trialDaysLeft !== null ? (
+   435→   435→                <>
+   436→   436→                  <span className="sm:hidden">{licenseBadge.trialDaysLeft}d</span>
+   437→   437→                  <span className="hidden sm:inline">Teste grátis • {licenseBadge.trialDaysLeft}d</span>
+   438→   438→                </>
+   439→   439→              ) : (
+   440→   440→                <>
+   441→   441→                  <span className="sm:hidden">Teste</span>
+   442→   442→                  <span className="hidden sm:inline">Teste grátis</span>
+   443→   443→                </>
+   444→   444→              )}
+   445→   445→            </button>
+   446→   446→            <Button
+   447→   447→              onClick={openNewUpload}
+   448→   448→              className="bg-amber-500 font-bold text-slate-950 hover:bg-amber-400"
+   449→   449→            >
+   450→   450→              <Plus className="mr-1.5 h-4 w-4" /> Novo
+   451→   451→            </Button>
+   452→   452→            {/* Menu hambúrguer — canto superior direito, todas as opções da conta */}
+   453→   453→            <Sheet open={menuOpen} onOpenChange={setMenuOpen}>
+   454→   454→              <SheetTrigger asChild>
+   455→   455→                <Button
+   456→   456→                  variant="ghost"
+   457→   457→                  size="icon"
+   458→   458→                  aria-label="Abrir menu"
+   459→   459→                  title="Menu"
+   460→   460→                  className="h-10 w-10 shrink-0 text-slate-200 hover:bg-slate-800 hover:text-white"
+   461→   461→                >
+   462→   462→                  <Menu className="h-6 w-6" />
+   463→   463→                </Button>
+   464→   464→              </SheetTrigger>
+   465→   465→              <SheetContent
+   466→   466→                side="right"
+   467→   467→                className="flex w-[304px] flex-col gap-0 p-0 sm:w-[360px] [&>button]:text-slate-400 [&>button]:hover:text-white"
+   468→   468→              >
+   469→   469→                <SheetHeader className="gap-0 space-y-0 rounded-none border-b border-slate-800 bg-slate-900 p-5 pb-6 text-white">
+   470→   470→                  <div className="flex items-center gap-3">
+   471→   471→                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-amber-400 text-base font-bold text-slate-950">
+   472→   472→                      {avatarInitial}
+   473→   473→                    </div>
+   474→   474→                    <div className="min-w-0">
+   475→   475→                      <SheetTitle className="truncate text-base font-bold text-white">
+   476→   476→                        Olá, {accountName || 'Aluno'}
+   477→   477→                      </SheetTitle>
+   478→   478→                      <SheetDescription className="truncate text-xs text-slate-400">
+   479→   479→                        {accountEmail || 'Conta do aluno'}
+   480→   480→                      </SheetDescription>
+   481→   481→                    </div>
+   482→   482→                  </div>
+   483→   483→                  <p
+   484→   484→                    className={`mt-3 inline-flex w-fit items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold ${
+   485→   485→                      licenseBadge.active
+   486→   486→                        ? 'bg-emerald-500/15 text-emerald-300'
+   487→   487→                        : 'bg-amber-400/15 text-amber-300'
+   488→   488→                    }`}
+   489→   489→                  >
+   490→   490→                    {licenseBadge.active ? (
+   491→   491→                      <>
+   492→   492→                        <BadgeCheck className="h-3.5 w-3.5" /> Assinatura ativa
+   493→   493→                      </>
+   494→   494→                    ) : licenseBadge.trialDaysLeft !== null ? (
+   495→   495→                      <>
+   496→   496→                        <Sparkles className="h-3.5 w-3.5" /> Teste grátis • {licenseBadge.trialDaysLeft}d restantes
+   497→   497→                      </>
+   498→   498→                    ) : (
+   499→   499→                      <>
+   500→   500→                        <Sparkles className="h-3.5 w-3.5" /> Teste grátis
+   501→   501→                      </>
+   502→   502→                    )}
+   503→   503→                  </p>
+   504→   504→                </SheetHeader>
+   505→   505→
+   506→   506→                <nav aria-label="Opções do menu" className="flex-1 space-y-1 overflow-y-auto p-3">
+   507→   507→                  {/* Assinar o plano (ou status de assinante) */}
+   508→   508→                  {licenseBadge.active ? (
+   509→   509→                    <div className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3.5 py-3">
+   510→   510→                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-600 text-white">
+   511→   511→                        <Crown className="h-5 w-5" />
+   512→   512→                      </div>
+   513→   513→                      <div className="min-w-0">
+   514→   514→                        <p className="text-sm font-bold text-emerald-900">Assinatura ativa</p>
+   515→   515→                        <p className="truncate text-xs text-emerald-700">Todas as provas liberadas</p>
+   516→   516→                      </div>
+   517→   517→                    </div>
+   518→   518→                  ) : (
+   519→   519→                    <button
+   520→   520→                      type="button"
+   521→   521→                      onClick={() => {
+   522→   522→                        setMenuOpen(false)
+   523→   523→                        window.open(SITE.checkoutUrl, '_blank', 'noopener,noreferrer')
+   524→   524→                      }}
+   525→   525→                      className="flex w-full items-center gap-3 rounded-xl bg-amber-400 px-3.5 py-3 text-left transition-colors hover:bg-amber-300"
+   526→   526→                    >
+   527→   527→                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-900 text-amber-300">
+   528→   528→                        <Crown className="h-5 w-5" />
+   529→   529→                      </div>
+   530→   530→                      <div className="min-w-0 flex-1">
+   531→   531→                        <p className="text-sm font-bold text-slate-950">Assinar o plano</p>
+   532→   532→                        <p className="truncate text-xs text-slate-700">
+   533→   533→                          {SITE.price}{SITE.period} • Cakto
+   534→   534→                        </p>
+   535→   535→                      </div>
+   536→   536→                      <ChevronRight className="h-4 w-4 shrink-0 text-slate-700" />
+   537→   537→                    </button>
+   538→   538→                  )}
+   539→   539→
+   540→   540→                  <MenuItem
+   541→   541→                    icon={UserRound}
+   542→   542→                    label="Minha conta"
+   543→   543→                    hint="Status, ativação e aparelho"
+   544→   544→                    onClick={() => {
+   545→   545→                      setMenuOpen(false)
+   546→   546→                      onManageAccess()
+   547→   547→                    }}
+   548→   548→                  />
+   549→   549→                  <MenuItem
+   550→   550→                    icon={Target}
+   551→   551→                    label="Meu desempenho"
+   552→   552→                    hint="Acertos, erros e disciplinas"
+   553→   553→                    onClick={() => {
+   554→   554→                      setMenuOpen(false)
+   555→   555→                      onOpenPerformance('resumo')
+   556→   556→                    }}
+   557→   557→                  />
+   558→   558→                  <MenuItem
+   559→   559→                    icon={History}
+   560→   560→                    label="Meu histórico"
+   561→   561→                    hint="Provas que você já concluiu"
+   562→   562→                    onClick={() => {
+   563→   563→                      setMenuOpen(false)
+   564→   564→                      onOpenPerformance('historico')
+   565→   565→                    }}
+   566→   566→                  />
+   567→   567→                  <MenuItem
+   568→   568→                    icon={FilePlus2}
+   569→   569→                    label="Novo simulado"
+   570→   570→                    hint="Transforme um PDF em prova"
+   571→   571→                    onClick={() => {
+   572→   572→                      setMenuOpen(false)
+   573→   573→                      openNewUpload()
+   574→   574→                    }}
+   575→   575→                  />
+   576→   576→                  <MenuItem
+   577→   577→                    icon={Timer}
+   578→   578→                    label="Pomodoro"
+   579→   579→                    hint="Foco com intervalos e sinal sonoro"
+   580→   580→                    onClick={() => {
+   581→   581→                      setMenuOpen(false)
+   582→   582→                      onOpenPomodoro()
+   583→   583→                    }}
+   584→   584→                  />
+   585→   585→                  <MenuItem
+   586→   586→                    icon={BookX}
+   587→   587→                    label="Caderno de erros"
+   588→   588→                    hint="Questões que você errou para revisar"
+   589→   589→                    badge={errorCount}
+   590→   590→                    onClick={() => {
+   591→   591→                      setMenuOpen(false)
+   592→   592→                      onOpenErrors()
+   593→   593→                    }}
+   594→   594→                  />
+   595→   595→                  <MenuItem
+   596→   596→                    icon={Share2}
+   597→   597→                    label="Convidar amigos"
+   598→   598→                    hint="Mostre o app para outros concurseiros"
+   599→   599→                    onClick={() => {
+   600→   600→                      setMenuOpen(false)
+   601→   601→                      shareApp()
+   602→   602→                    }}
+   603→   603→                  />
+   604→   604→                  <MenuItem
+   605→   605→                    icon={LifeBuoy}
+   606→   606→                    label="Suporte"
+   607→   607→                    hint={SITE.supportEmail}
+   608→   608→                    href={`mailto:${SITE.supportEmail}`}
+   609→   609→                    onClick={() => setMenuOpen(false)}
+   610→   610→                  />
+   611→   611→
+   612→   612→                  {/* Aparência: tema e tamanho da fonte */}
+   613→   613→                  <div className="pt-2">
+   614→   614→                    <p className="px-1 pb-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-400">
+   615→   615→                      Aparência
+   616→   616→                    </p>
+   617→   617→                    <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50/60 p-2.5">
+   618→   618→                      <div className="flex items-center gap-2">
+   619→   619→                        <span className="w-14 shrink-0 text-xs font-semibold text-slate-600">Tema</span>
+   620→   620→                        <div className="grid flex-1 grid-cols-2 gap-1 rounded-lg bg-slate-200/70 p-0.5">
+   621→   621→                          {(
+   622→   622→                            [
+   623→   623→                              ['light', 'Claro', Sun],
+   624→   624→                              ['dark', 'Escuro', Moon],
+   625→   625→                            ] as [ThemeMode, string, typeof Sun][]
+   626→   626→                          ).map(([mode, label, Icon]) => (
+   627→   627→                            <button
+   628→   628→                              key={mode}
+   629→   629→                              type="button"
+   630→   630→                              aria-pressed={theme === mode}
+   631→   631→                              onClick={() => {
+   632→   632→                                setTheme(mode)
+   633→   633→                                setThemeState(mode)
+   634→   634→                              }}
+   635→   635→                              className={`flex h-8 items-center justify-center gap-1.5 rounded-md text-xs font-bold transition-colors ${
+   636→   636→                                theme === mode
+   637→   637→                                  ? 'bg-white text-slate-900 shadow-sm'
+   638→   638→                                  : 'text-slate-500 hover:text-slate-700'
+   639→   639→                              }`}
+
+[showing lines 80-639 of 1148; use offset=640 with limit to continue reading]

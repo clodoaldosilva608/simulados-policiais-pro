@@ -2,16 +2,21 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
-import { ArrowLeft, Pause, Play, RotateCcw, SkipForward, Volume2, VolumeX } from 'lucide-react'
+import { ArrowLeft, Bell, BellOff, Pause, Play, RotateCcw, SkipForward, Volume2, VolumeX } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import {
   DEFAULT_POMODORO_CONFIG,
   loadPomodoroConfig,
   loadPomodoroRuntime,
+  markFocusCompleted,
+  maybeFireDailyReminder,
+  notificationPermission,
+  notifyPhaseEnd,
   phaseTotalMs,
   playEndSignal,
   playStartSignal,
+  requestNotifyPermission,
   savePomodoroConfig,
   setPomodoroRuntime,
   type PomodoroConfig,
@@ -43,6 +48,7 @@ export function PomodoroScreen({ onBack }: { onBack: () => void }) {
     remainingMs: DEFAULT_POMODORO_CONFIG.focusMin * 60_000,
   })
   const [booted, setBooted] = useState(false)
+  const [notifyState, setNotifyState] = useState<'unsupported' | NotificationPermission>('default')
   const configRef = useRef(config)
   useEffect(() => {
     configRef.current = config
@@ -54,6 +60,10 @@ export function PomodoroScreen({ onBack }: { onBack: () => void }) {
     const id = window.setTimeout(() => {
       const loaded = loadPomodoroConfig()
       setConfig(loaded)
+      setNotifyState(notificationPermission())
+      // Lembrete diário: dispara ao abrir a tela (se já passou do horário hoje)
+      const afterReminder = maybeFireDailyReminder(loaded)
+      if (afterReminder !== loaded) setConfig(afterReminder)
       const rt = loadPomodoroRuntime()
       // Sincroniza o estado de módulo com o persistido (após reload do app)
       setPomodoroRuntime({ phase: rt.phase, status: rt.status, endsAt: rt.endsAt, remainingMs: rt.remainingMs })
@@ -83,8 +93,12 @@ export function PomodoroScreen({ onBack }: { onBack: () => void }) {
 
   const handlePhaseEnd = useCallback(() => {
     const cfg = configRef.current
-    const nextPhase: PomodoroPhase = runtime.phase === 'foco' ? 'intervalo' : 'foco'
+    const endingPhase = runtime.phase
+    const nextPhase: PomodoroPhase = endingPhase === 'foco' ? 'intervalo' : 'foco'
     if (cfg.sound) playEndSignal()
+    if (cfg.notify) notifyPhaseEnd(endingPhase)
+    // Foco concluído silencia o lembrete diário de hoje
+    if (endingPhase === 'foco') setConfig((c) => markFocusCompleted(c))
     if (cfg.autoNext) {
       const endsAt = Date.now() + phaseTotalMs(cfg, nextPhase)
       setPomodoroRuntime({ phase: nextPhase, status: 'rodando', endsAt, remainingMs: 0 })
@@ -156,6 +170,17 @@ export function PomodoroScreen({ onBack }: { onBack: () => void }) {
       }
       return next
     })
+  }
+
+  /** Ativa notificações: pede permissão e só persiste quando concedida */
+  const handleNotifyToggle = async (want: boolean) => {
+    if (!want) {
+      updateConfig({ notify: false })
+      return
+    }
+    const granted = await requestNotifyPermission()
+    setNotifyState(notificationPermission())
+    updateConfig({ notify: granted })
   }
 
   const remainingMs =
@@ -333,6 +358,60 @@ export function PomodoroScreen({ onBack }: { onBack: () => void }) {
               </span>
               <Switch checked={config.sound} onCheckedChange={(v) => updateConfig({ sound: v })} aria-label="Sinal sonoro" />
             </label>
+            <label className="flex items-center justify-between gap-3">
+              <span className="min-w-0">
+                <span className="flex items-center gap-1.5 text-sm font-semibold text-slate-800">
+                  {config.notify ? <Bell className="h-4 w-4" /> : <BellOff className="h-4 w-4" />} Avisos do navegador
+                </span>
+                <span className="block text-xs text-slate-500">
+                  {notifyState === 'denied'
+                    ? 'Permissão bloqueada nas configurações do navegador'
+                    : notifyState === 'unsupported'
+                      ? 'Não suportado neste navegador'
+                      : 'Avisa quando a fase termina com a aba em segundo plano'}
+                </span>
+              </span>
+              <Switch
+                checked={config.notify}
+                disabled={notifyState === 'unsupported' || notifyState === 'denied'}
+                onCheckedChange={(v) => void handleNotifyToggle(v)}
+                aria-label="Avisos do navegador"
+              />
+            </label>
+            <div className="space-y-2 rounded-xl border border-slate-100 bg-slate-50/60 p-3">
+              <label className="flex items-center justify-between gap-3">
+                <span className="min-w-0">
+                  <span className="block text-sm font-semibold text-slate-800">Lembrete diário de estudo</span>
+                  <span className="block text-xs text-slate-500">
+                    “Seu Pomodoro de hoje te espera” — chega se você ainda não estudou
+                  </span>
+                </span>
+                <Switch
+                  checked={config.dailyReminder}
+                  disabled={notifyState === 'unsupported' || notifyState === 'denied'}
+                  onCheckedChange={(v) => {
+                    if (v && notifyState !== 'granted') void handleNotifyToggle(true).then(() => updateConfig({ dailyReminder: true }))
+                    else updateConfig({ dailyReminder: v })
+                  }}
+                  aria-label="Lembrete diário de estudo"
+                />
+              </label>
+              {config.dailyReminder && (
+                <label className="flex items-center justify-between gap-3 pl-0">
+                  <span className="text-xs font-semibold text-slate-600">Horário do lembrete</span>
+                  <input
+                    type="time"
+                    value={config.reminderTime}
+                    onChange={(e) => updateConfig({ reminderTime: e.target.value })}
+                    className="h-9 rounded-lg border border-slate-200 bg-white px-2 text-sm font-semibold text-slate-800"
+                    aria-label="Horário do lembrete diário"
+                  />
+                </label>
+              )}
+              <p className="text-[11px] leading-relaxed text-slate-400">
+                O lembrete chega enquanto o app estiver aberto no navegador (aba ativa ou em segundo plano).
+              </p>
+            </div>
           </div>
           <p className="mt-3 text-[11px] leading-relaxed text-slate-400">
             {booted ? 'O tempo continua contando mesmo se você trocar de tela dentro do app.' : ' '}

@@ -232,9 +232,14 @@ export async function listLocalAttempts(docId: string): Promise<LocalAttempt[]> 
 
 /**
  * CADERNO DE ERROS — toda questão respondida incorretamente entra aqui
- * para o aluno revisar e responder de novo mais tarde. A questão é
- * "dominada" quando acertada em pelo menos uma revisão.
+ * para o aluno revisar e responder de novo mais tarde, com REPETIÇÃO
+ * ESPAÇADA: a cada acerto na revisão a questão volta depois de 3, 7 e 15
+ * dias (revisão cientificamente otimizada) até ficar dominada.
  */
+
+/** Intervalos da repetição espaçada (dias) por nível de revisão */
+export const REVIEW_INTERVALS_DAYS = [3, 7, 15] as const
+
 export interface WrongQuestion {
   /** `${docId}:${questionId}` */
   id: string
@@ -255,9 +260,41 @@ export interface WrongQuestion {
   timesCorrectReview: number
   /** ISO date da última vez que errou */
   lastMissedAt: string
+  /**
+   * Nível da repetição espaçada: 0 = aguardando 1ª revisão (disponível
+   * agora), 1..2 = já revisada e agendada para voltar em 7/15 dias,
+   * 3 = dominada (não volta mais). Registros antigos (antes da repetição
+   * espaçada) chegam sem o campo — migram via reviewStatusOf().
+   */
+  reviewStage?: number
+  /** ISO date da próxima revisão programada (null quando disponível agora) */
+  nextReviewAt?: string | null
 }
 
 export type WrongQuestionInput = Omit<WrongQuestion, 'timesMissed' | 'timesCorrectReview'>
+
+export type ReviewStatus = 'due' | 'scheduled' | 'mastered'
+
+/**
+ * Estado da questão na repetição espaçada:
+ * • due       — precisa de revisão hoje (nunca revisada ou prazo vencido)
+ * • scheduled — agendada para voltar depois (3/7/15 dias)
+ * • mastered  — dominada após as 3 revisões espaçadas (não volta mais)
+ */
+export function reviewStatusOf(q: WrongQuestion, now: number = Date.now()): ReviewStatus {
+  // Migração de registros antigos: dominada era "acertou na revisão ≥ 1"
+  const stage = q.reviewStage ?? (q.timesCorrectReview > 0 ? 3 : 0)
+  if (stage >= 3) return 'mastered'
+  if (!q.nextReviewAt) return 'due'
+  return new Date(q.nextReviewAt).getTime() <= now ? 'due' : 'scheduled'
+}
+
+/** Dias restantes até a próxima revisão (mínimo 1) */
+export function daysUntilReview(q: WrongQuestion, now: number = Date.now()): number {
+  if (!q.nextReviewAt) return 0
+  const diff = new Date(q.nextReviewAt).getTime() - now
+  return Math.max(1, Math.ceil(diff / 86_400_000))
+}
 
 /** Registra (ou atualiza) as questões erradas na finalização de uma prova */
 export async function recordWrongQuestions(entries: WrongQuestionInput[]): Promise<void> {
@@ -274,9 +311,18 @@ export async function recordWrongQuestions(entries: WrongQuestionInput[]): Promi
               ...entry,
               timesMissed: (existing.timesMissed ?? 0) + 1,
               lastMissedAt: entry.lastMissedAt,
+              // Errou de novo na prova: volta para a fila imediata da repetição espaçada
+              reviewStage: 0,
+              nextReviewAt: null,
             })
           } else {
-            s.put({ ...entry, timesMissed: 1, timesCorrectReview: 0 })
+            s.put({
+              ...entry,
+              timesMissed: 1,
+              timesCorrectReview: 0,
+              reviewStage: 0,
+              nextReviewAt: null,
+            })
           }
         }
       }
@@ -305,18 +351,47 @@ export async function countWrongQuestions(): Promise<number> {
   }
 }
 
-/** Resultado da revisão: acertou vira "dominada"; errou de novo soma mais um erro */
+/** Questões que precisam de revisão HOJE (nunca revisadas ou prazo vencido) */
+export async function countDueWrongQuestions(): Promise<number> {
+  try {
+    const list =
+      (await withStore('errors', 'readonly', (s) => s.getAll() as IDBRequest<WrongQuestion[]>)) ?? []
+    return list.filter((q) => reviewStatusOf(q) === 'due').length
+  } catch {
+    return 0
+  }
+}
+
+/**
+ * Resultado da revisão com REPETIÇÃO ESPAÇADA:
+ * • Acertou  → sobe de nível e agenda o retorno (3 → 7 → 15 dias); após o
+ *   acerto no nível 15 dias a questão fica DOMINADA e não volta mais.
+ * • Errou    → volta para o início da fila (disponível para revisar agora).
+ */
 export async function markWrongQuestionResult(id: string, correct: boolean): Promise<void> {
   try {
     await withStore('errors', 'readwrite', (s) => {
       const req = s.get(id)
       req.onsuccess = () => {
         const existing = req.result as WrongQuestion | undefined
-        if (existing) {
+        if (!existing) return
+        const stage = existing.reviewStage ?? (existing.timesCorrectReview > 0 ? 3 : 0)
+        if (correct) {
+          const nextStage = Math.min(stage + 1, 3)
+          const intervalDays = REVIEW_INTERVALS_DAYS[Math.min(stage, 2)]
+          const next = new Date(Date.now() + intervalDays * 86_400_000).toISOString()
           s.put({
             ...existing,
-            timesMissed: correct ? existing.timesMissed : existing.timesMissed + 1,
-            timesCorrectReview: correct ? existing.timesCorrectReview + 1 : existing.timesCorrectReview,
+            timesCorrectReview: existing.timesCorrectReview + 1,
+            reviewStage: nextStage,
+            nextReviewAt: nextStage >= 3 ? null : next,
+          })
+        } else {
+          s.put({
+            ...existing,
+            timesMissed: existing.timesMissed + 1,
+            reviewStage: 0,
+            nextReviewAt: null,
           })
         }
       }

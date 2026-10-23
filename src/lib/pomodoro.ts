@@ -20,6 +20,16 @@ export interface PomodoroConfig {
   autoNext: boolean
   /** sinal sonoro ao iniciar e ao encerrar cada fase */
   sound: boolean
+  /** notificações do navegador ao encerrar cada fase (funciona com aba em 2º plano) */
+  notify: boolean
+  /** lembrete diário de estudo ("seu Pomodoro de hoje te espera") */
+  dailyReminder: boolean
+  /** horário do lembrete diário (HH:MM) */
+  reminderTime: string
+  /** último dia (YYYY-MM-DD) em que o lembrete disparou */
+  lastReminderDay?: string
+  /** último dia (YYYY-MM-DD) em que uma fase de foco foi concluída */
+  lastFocusDay?: string
 }
 
 export const DEFAULT_POMODORO_CONFIG: PomodoroConfig = {
@@ -27,6 +37,9 @@ export const DEFAULT_POMODORO_CONFIG: PomodoroConfig = {
   breakMin: 5,
   autoNext: true,
   sound: true,
+  notify: false,
+  dailyReminder: false,
+  reminderTime: '19:00',
 }
 
 const CONFIG_KEY = 'spp-pomodoro-v1'
@@ -41,6 +54,11 @@ export function loadPomodoroConfig(): PomodoroConfig {
       breakMin: clampMinutes(parsed.breakMin, 1, 30, DEFAULT_POMODORO_CONFIG.breakMin),
       autoNext: typeof parsed.autoNext === 'boolean' ? parsed.autoNext : DEFAULT_POMODORO_CONFIG.autoNext,
       sound: typeof parsed.sound === 'boolean' ? parsed.sound : DEFAULT_POMODORO_CONFIG.sound,
+      notify: typeof parsed.notify === 'boolean' ? parsed.notify : DEFAULT_POMODORO_CONFIG.notify,
+      dailyReminder: typeof parsed.dailyReminder === 'boolean' ? parsed.dailyReminder : DEFAULT_POMODORO_CONFIG.dailyReminder,
+      reminderTime: typeof parsed.reminderTime === 'string' && /^\d{2}:\d{2}$/.test(parsed.reminderTime) ? parsed.reminderTime : DEFAULT_POMODORO_CONFIG.reminderTime,
+      lastReminderDay: typeof parsed.lastReminderDay === 'string' ? parsed.lastReminderDay : undefined,
+      lastFocusDay: typeof parsed.lastFocusDay === 'string' ? parsed.lastFocusDay : undefined,
     }
   } catch {
     return { ...DEFAULT_POMODORO_CONFIG }
@@ -159,4 +177,83 @@ export function playEndSignal(): void {
   beep(660, 0, 150)
   beep(880, 200, 150)
   beep(1100, 400, 260)
+}
+
+/* ------------------------- NOTIFICAÇÕES DO NAVEGADOR ------------------------- */
+
+export function notifySupported(): boolean {
+  return typeof window !== 'undefined' && 'Notification' in window
+}
+
+export function notificationPermission(): NotificationPermission | 'unsupported' {
+  if (!notifySupported()) return 'unsupported'
+  return Notification.permission
+}
+
+/** Pede permissão e devolve true quando concedida */
+export async function requestNotifyPermission(): Promise<boolean> {
+  if (!notifySupported()) return false
+  try {
+    if (Notification.permission === 'granted') return true
+    if (Notification.permission === 'denied') return false
+    const result = await Notification.requestPermission()
+    return result === 'granted'
+  } catch {
+    return false
+  }
+}
+
+function todayKey(d: Date = new Date()): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+function fireNotification(title: string, body: string): void {
+  try {
+    if (!notifySupported() || Notification.permission !== 'granted') return
+    new Notification(title, { body, icon: '/icons/icon-192.png', badge: '/icons/icon-192.png' })
+  } catch {
+    /* notificação é opcional */
+  }
+}
+
+/**
+ * Notifica o fim da fase do Pomodoro (só quando a aba está em 2º plano —
+ * em primeiro plano o sinal sonoro já avisa).
+ */
+export function notifyPhaseEnd(phase: PomodoroPhase): void {
+  if (typeof document !== 'undefined' && !document.hidden) return
+  if (phase === 'foco') {
+    fireNotification('Foco concluído! 🍅', 'Hora do intervalo — levante, beba água e respire.')
+  } else {
+    fireNotification('Intervalo encerrado ⏱️', 'De volta ao foco: seu Pomodoro recomeçou.')
+  }
+}
+
+/** Registra que uma fase de foco foi concluída hoje (silencia o lembrete do dia) */
+export function markFocusCompleted(config: PomodoroConfig): PomodoroConfig {
+  const next = { ...config, lastFocusDay: todayKey() }
+  savePomodoroConfig(next)
+  return next
+}
+
+/**
+ * LEMBRETE DIÁRIO — dispara a notificação "seu Pomodoro de hoje te espera"
+ * quando: ativo, já passou do horário hoje, ainda não disparou hoje e o
+ * aluno não concluiu foco hoje. Funciona com o app/PWA aberto (aba em
+ * primeiro ou segundo plano) — o navegador não permite push com app fechado
+ * sem serviço de push externo.
+ */
+export function maybeFireDailyReminder(config: PomodoroConfig): PomodoroConfig {
+  if (!config.dailyReminder || !notifySupported() || Notification.permission !== 'granted') return config
+  const today = todayKey()
+  if (config.lastReminderDay === today) return config
+  if (config.lastFocusDay === today) return config
+  const [h, m] = config.reminderTime.split(':').map(Number)
+  const now = new Date()
+  const target = new Date(now.getFullYear(), now.getMonth(), now.getDate(), h || 0, m || 0)
+  if (now.getTime() < target.getTime()) return config
+  fireNotification('Seu Pomodoro de hoje te espera 🍅', 'Dê o primeiro passo: 25 minutos de foco já valem a pena.')
+  const next = { ...config, lastReminderDay: today }
+  savePomodoroConfig(next)
+  return next
 }
