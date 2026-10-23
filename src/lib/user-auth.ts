@@ -367,7 +367,8 @@ export async function authenticate(
   return { ok: true, user }
 }
 
-/** Vincula o aparelho à conta (tomada de posse: um dispositivo por vez) */
+/** Vincula o aparelho à conta (tomada de posse: um dispositivo por vez).
+ *  Best-effort: indisponibilidade do armazenamento NÃO derruba o login. */
 export async function bindDevice(
   userId: string,
   deviceUid: string,
@@ -382,7 +383,7 @@ export async function bindDevice(
       device: device?.slice(0, 60),
       platform: platform?.slice(0, 30),
     },
-    { serverAction: true },
+    { serverAction: true, bestEffort: true },
   )
 }
 

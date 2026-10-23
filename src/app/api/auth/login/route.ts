@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { appendEvent, storageReady } from '@/lib/blob-registry'
+import { appendEvent, blobDown, storageReady } from '@/lib/blob-registry'
 import {
   accessOf,
   authenticate,
@@ -51,6 +51,18 @@ export async function POST(req: NextRequest) {
 
   const auth = await authenticate(email, password)
   if (!auth.ok) {
+    // Diferencia "credenciais erradas" de "armazenamento fora" para o usuário
+    // não achar que errou a senha durante uma indisponibilidade.
+    if (blobDown()) {
+      return NextResponse.json(
+        {
+          ok: false,
+          message:
+            'Serviço de contas temporariamente indisponível. Tente novamente em alguns minutos.',
+        },
+        { status: 503 },
+      )
+    }
     return NextResponse.json(
       { ok: false, message: 'E-mail ou senha incorretos.' },
       { status: 401 },
@@ -70,9 +82,16 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  const bound = deviceUid
-    ? await bindDevice(user.id, deviceUid, clean(body.device, 60), clean(body.platform, 30))
-    : user
+  // Vínculo do aparelho é best-effort: se o armazenamento estiver degradado,
+  // o login AINDA é válido (sessão HMAC não depende de escrita).
+  let bound = user
+  if (deviceUid) {
+    try {
+      bound = await bindDevice(user.id, deviceUid, clean(body.device, 60), clean(body.platform, 30))
+    } catch {
+      bound = { ...user, activeDevice: deviceUid, activeDeviceAt: Date.now() }
+    }
+  }
   const token = createUserSessionToken(user.id, deviceUid ?? 'sem-aparelho')
 
   void appendEvent({

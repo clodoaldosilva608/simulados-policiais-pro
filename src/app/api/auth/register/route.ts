@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { appendEvent, storageReady, getUser } from '@/lib/blob-registry'
+import { appendEvent, blobDown, getUser, storageReady } from '@/lib/blob-registry'
 import {
   accessOf,
   clientIp,
@@ -56,9 +56,19 @@ export async function POST(req: NextRequest) {
     deviceUid,
     device: clean(body.device, 60),
     platform: clean(body.platform, 30),
-  })
+  }).catch(() => ({ ok: false as const, error: 'armazenamento' as const }))
 
   if (!result.ok) {
+    if ((result as { error: string }).error === 'armazenamento' || blobDown()) {
+      return NextResponse.json(
+        {
+          ok: false,
+          message:
+            'Serviço de contas temporariamente indisponível. Tente novamente em alguns minutos.',
+        },
+        { status: 503 },
+      )
+    }
     const messages: Record<string, string> = {
       email_invalido: 'Digite um e-mail válido para criar sua conta.',
       senha_curta: 'A senha deve ter pelo menos 6 caracteres.',

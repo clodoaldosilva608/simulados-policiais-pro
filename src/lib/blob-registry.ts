@@ -131,9 +131,28 @@ async function listLocal(prefix: string, cap = 2000): Promise<string[]> {
  * CACHE EM MEMÓRIA (por instância lambda) — reduz drasticamente as leituras
  * do Blob (cota de banda/operações). TTL curto de 45 s preserva a
  * consistência entre instâncias com atraso mínimo.
+ *
+ * LKG (LAST-KNOWN-GOOD): além do cache com TTL, mantemos a última cópia
+ * boa de CADA path para sempre (sem expiração, por instância). Quando o
+ * Blob fica indisponível (ex.: store suspensa por cota), as leituras caem
+ * para o LKG em vez de null — LOGIN e sessão continuam funcionando em
+ * instâncias que já viraram aquele dado, mesmo durante uma queda.
  */
 const jsonCache = new Map<string, { data: unknown; at: number }>()
+const jsonLkg = new Map<string, unknown>()
 const JSON_CACHE_TTL_MS = 45_000
+
+/** Erro do Blob marca indisponibilidade temporária (para rotas darem 503 claro). */
+let blobDownUntil = 0
+
+export function blobDown(): boolean {
+  return Date.now() < blobDownUntil
+}
+
+function markBlobDown(err: unknown): void {
+  blobDownUntil = Date.now() + 30_000
+  console.error('[blob-registry] Blob indisponível:', (err as Error)?.message ?? err)
+}
 
 export async function readJson<T>(pathname: string): Promise<T | null> {
   if (!blobConfigured()) return readLocal<T>(pathname)
@@ -147,9 +166,15 @@ export async function readJson<T>(pathname: string): Promise<T | null> {
     const text = await streamToText(stream)
     const data = JSON.parse(text) as T
     jsonCache.set(pathname, { data, at: Date.now() })
+    jsonLkg.set(pathname, data)
     return data
   } catch (err) {
-    console.error('[blob-registry] readJson falhou:', pathname, err)
+    markBlobDown(err)
+    const lkg = jsonLkg.get(pathname)
+    if (lkg !== undefined) {
+      console.warn('[blob-registry] readJson caiu para LKG:', pathname)
+      return lkg as T
+    }
     return null
   }
 }
@@ -173,15 +198,42 @@ async function streamToText(stream: unknown): Promise<string> {
 
 export async function writeJson(pathname: string, data: unknown): Promise<void> {
   if (!blobConfigured()) return writeLocal(pathname, data)
-  await put(pathname, JSON.stringify(data), {
-    access: 'private',
-    contentType: 'application/json',
-    addRandomSuffix: false,
-    allowOverwrite: true,
-  })
-  // write-through: a própria instância já vê o dado novo (evita ler de volta)
-  jsonCache.set(pathname, { data, at: Date.now() })
+  try {
+    await put(pathname, JSON.stringify(data), {
+      access: 'private',
+      contentType: 'application/json',
+      addRandomSuffix: false,
+      allowOverwrite: true,
+    })
+    // write-through: a própria instância já vê o dado novo (evita ler de volta)
+    jsonCache.set(pathname, { data, at: Date.now() })
+    jsonLkg.set(pathname, data)
+    blobDownUntil = 0
+  } catch (err) {
+    // FALHA DE ESCRITA nunca deve ficar silenciosa, mas também não pode
+    // derrubar a request inteira nas camadas que tratam (rotas de autenticação
+    // fazem try/catch). Mantemos o LKG e marcamos a store como degradada.
+    markBlobDown(err)
+    throw err
+  }
 }
+
+/**
+ * Escrita BEST-EFFORT para dados não-críticos (heartbeat, vínculo de
+ * aparelho, eventos): se o Blob estiver indisponível, mantém o LKG em
+ * memória e NÃO lança — a operação principal (login/sessão) segue.
+ */
+export async function writeJsonSoft(pathname: string, data: unknown): Promise<boolean> {
+  try {
+    await writeJson(pathname, data)
+    return true
+  } catch {
+    jsonLkg.set(pathname, data) // instância continua servindo o estado mais novo
+    return false
+  }
+}
+
+const listLkg = new Map<string, string[]>()
 
 async function listAll(prefix: string, cap = 2000): Promise<string[]> {
   if (!blobConfigured()) return listLocal(prefix, cap)
@@ -193,10 +245,12 @@ async function listAll(prefix: string, cap = 2000): Promise<string[]> {
       for (const b of page.blobs) paths.push(b.pathname)
       cursor = page.hasMore ? page.cursor : undefined
     } while (cursor && paths.length < cap)
-  } catch {
+    listLkg.set(prefix, paths)
     return paths
+  } catch (err) {
+    markBlobDown(err)
+    return listLkg.get(prefix) ?? paths
   }
-  return paths
 }
 
 /* ------------------------------------------------------------------ */
@@ -243,10 +297,20 @@ export type UserPatch = Partial<Omit<RegistryUser, 'id' | 'createdAt' | 'updated
 export async function upsertUser(
   id: string,
   patch: UserPatch,
-  opts: { heartbeat?: boolean; serverAction?: boolean } = {},
+  opts: { heartbeat?: boolean; serverAction?: boolean; bestEffort?: boolean } = {},
 ): Promise<RegistryUser> {
   const now = Date.now()
   const existing = await getUser(id)
+  // HEARTBEAT THROTTLE: gravações só de lastSeen (patch vazio) no máximo a cada
+  // 60 min por usuário — evita queimar a cota do Blob a cada /api/auth/me.
+  if (
+    existing &&
+    Object.keys(patch).length === 0 &&
+    opts.heartbeat !== false &&
+    now - (existing.lastSeen ?? 0) < 60 * 60_000
+  ) {
+    return existing
+  }
   const next: RegistryUser = existing
     ? { ...existing, ...patch }
     : {
@@ -290,7 +354,13 @@ export async function upsertUser(
   next.updatedAt = now
   if (opts.heartbeat !== false) next.lastSeen = now
 
-  await writeJson(userPath(next.id), next)
+  if (opts.bestEffort) {
+    // Escrita não-crítica (heartbeat/vínculo de aparelho): indisponibilidade
+    // do Blob não pode derrubar o login — a instância mantém o estado no LKG.
+    await writeJsonSoft(userPath(next.id), next)
+  } else {
+    await writeJson(userPath(next.id), next)
+  }
   return next
 }
 

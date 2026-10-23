@@ -9,6 +9,8 @@ import {
   BookOpenCheck,
   Clock,
   Coins,
+  Database,
+  Download,
   FileText,
   KeyRound,
   Loader2,
@@ -19,6 +21,7 @@ import {
   Settings,
   ShieldCheck,
   TrendingUp,
+  Upload,
   UserCheck,
   UserX,
   Users,
@@ -473,6 +476,139 @@ function EventBadge({ type }: { type: string }) {
 /* Ajustes: configuração + códigos de acesso + sync Cakto              */
 /* ------------------------------------------------------------------ */
 
+interface StorageDiag {
+  verdict: string
+  dica?: string
+  probes?: { op: string; ok: boolean; code?: string; message?: string }[]
+}
+
+function StorageBackupCard() {
+  const [diag, setDiag] = useState<StorageDiag | null>(null)
+  const [probing, setProbing] = useState(true)
+  const [restoring, setRestoring] = useState(false)
+  const [msg, setMsg] = useState('')
+
+  const probe = useCallback(async () => {
+    setProbing(true)
+    try {
+      const res = await fetch('/api/admin/diag-storage', { cache: 'no-store' })
+      const data = (await res.json()) as StorageDiag
+      setDiag(data)
+    } catch {
+      setDiag({ verdict: 'probe-falhou', dica: 'Não foi possível sondar o armazenamento.' })
+    } finally {
+      setProbing(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    void probe()
+  }, [probe])
+
+  const downloadBackup = () => {
+    // O endpoint já responde com Content-Disposition (download direto)
+    window.location.href = '/api/admin/backup'
+    setMsg('Download do backup iniciado. Guarde este arquivo em local seguro.')
+  }
+
+  const restoreBackup = async (file: File) => {
+    setRestoring(true)
+    setMsg('')
+    try {
+      const text = await file.text()
+      JSON.parse(text) // valida antes de enviar
+      const res = await fetch('/api/admin/backup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: text,
+      })
+      const data = (await res.json()) as { ok?: boolean; restored?: number; errors?: string[] }
+      setMsg(
+        data.ok
+          ? `Restauração concluída: ${data.restored ?? 0} contas recriadas.${data.errors?.length ? ' Avisos: ' + data.errors.join('; ') : ''}`
+          : 'Falha na restauração — verifique o arquivo.',
+      )
+    } catch {
+      setMsg('Arquivo inválido — envie o JSON gerado pelo botão "Baixar backup".')
+    } finally {
+      setRestoring(false)
+    }
+  }
+
+  const verdictMap: Record<string, { label: string; cls: string }> = {
+    operacional: { label: 'Operacional', cls: 'text-emerald-400' },
+    'suspensa-por-cota': { label: 'SUSPENSA por excesso de uso — logins de alunos ficam indisponíveis', cls: 'text-red-400' },
+    'credencial-invalida': { label: 'Credencial do armazenamento inválida', cls: 'text-red-400' },
+    'nao-configurado': { label: 'Não configurado', cls: 'text-amber-400' },
+    indisponivel: { label: 'Indisponível', cls: 'text-red-400' },
+  }
+  const v = verdictMap[diag?.verdict ?? ''] ?? { label: diag?.verdict ?? 'verificando…', cls: 'text-slate-400' }
+
+  return (
+    <Card className="border-slate-800 bg-slate-900">
+      <CardHeader className="pb-2">
+        <CardTitle className="flex items-center gap-2 text-sm text-slate-200">
+          <Database className="h-4 w-4 text-amber-400" /> Armazenamento & Backup
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="flex items-center justify-between gap-2">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold text-slate-300">Estado do registro central</p>
+            <p className={`mt-0.5 text-xs font-bold ${v.cls}`}>{probing ? 'sondando…' : v.label}</p>
+          </div>
+          <Button onClick={() => void probe()} disabled={probing} size="sm" variant="outline" className="border-slate-700 bg-slate-950 text-slate-200 hover:bg-slate-800">
+            {probing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+            <span className="ml-1.5">Sondar</span>
+          </Button>
+        </div>
+        {diag?.dica && (
+          <p className="rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-xs leading-relaxed text-slate-300">{diag.dica}</p>
+        )}
+        {diag?.probes && diag.probes.some((p) => !p.ok) && (
+          <details className="rounded-lg border border-slate-800 bg-slate-950 px-3 py-2">
+            <summary className="cursor-pointer text-xs font-semibold text-slate-300">Detalhes técnicos do erro</summary>
+            <div className="mt-2 space-y-1">
+              {diag.probes.map((p) => (
+                <p key={p.op} className="font-mono text-[10px] leading-relaxed text-slate-400">
+                  {p.ok ? '✓' : '✗'} {p.op}
+                  {p.code ? ` — ${p.code}` : ''}
+                  {p.message && !p.ok ? ` — ${p.message}` : ''}
+                </p>
+              ))}
+            </div>
+          </details>
+        )}
+        <div className="flex flex-wrap gap-2">
+          <Button onClick={downloadBackup} size="sm" className="bg-amber-400 font-bold text-slate-950 hover:bg-amber-300">
+            <Download className="mr-1.5 h-4 w-4" /> Baixar backup completo
+          </Button>
+          <label className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border border-slate-700 bg-slate-950 px-3 text-xs font-semibold text-slate-200 hover:bg-slate-800">
+            <Upload className="h-4 w-4" /> {restoring ? 'Restaurando…' : 'Restaurar backup'}
+            <input
+              type="file"
+              accept="application/json"
+              className="hidden"
+              disabled={restoring}
+              onChange={(e) => {
+                const f = e.target.files?.[0]
+                if (f) void restoreBackup(f)
+                e.target.value = ''
+              }}
+            />
+          </label>
+        </div>
+        <p className="text-[11px] leading-relaxed text-slate-500">
+          O backup contém TODAS as contas (senhas em hash), índices, códigos e o conteúdo do app (questões,
+          materiais, pop-ups, planos e configurações). Baixe periodicamente — se a store ever falhar, a
+          restauração recria tudo em segundos. Arquivo contém dados sensíveis: não compartilhe.
+        </p>
+        {msg && <p className="rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-xs text-slate-300">{msg}</p>}
+      </CardContent>
+    </Card>
+  )
+}
+
 function ConfigPanel({ config, cfgTick, onReload }: { config: AppConfig; cfgTick: number; onReload: () => Promise<void> }) {
   useEffect(() => {
     void onReload()
@@ -539,6 +675,7 @@ function ConfigPanel({ config, cfgTick, onReload }: { config: AppConfig; cfgTick
 
   return (
     <div className="mt-4 space-y-4">
+      <StorageBackupCard />
       <Card className="border-slate-800 bg-slate-900">
         <CardHeader className="pb-2">
           <CardTitle className="flex items-center gap-2 text-sm text-slate-200">
