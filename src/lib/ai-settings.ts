@@ -29,12 +29,34 @@ export interface AiSettings {
   instructions: string
 }
 
+/**
+ * Catálogo de modelos do Gemini (verificado em out/2026 com chaves novas do
+ * AI Studio). A Google descontinua modelos antigos periodicamente — quando um
+ * modelo sai do ar, o gateway troca sozinho para um fallback (ver ai-gateway)
+ * e `getAiSettings` migra o modelo salvo do aluno (RETIRED_MODEL_MAP).
+ */
 export const AI_MODELS: { id: string; label: string; hint: string }[] = [
-  { id: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash', hint: 'Recomendado • rápido e com boa cota grátis' },
-  { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash', hint: 'Mais inteligente • cota grátis menor' },
-  { id: 'gemini-2.5-flash-lite', label: 'Gemini 2.5 Flash-Lite', hint: 'O mais econômico • cota grátis maior' },
-  { id: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro', hint: 'Máxima qualidade • cota grátis limitada' },
+  { id: 'gemini-3-flash-preview', label: 'Gemini 3 Flash', hint: 'Recomendado • rápido e com boa cota grátis' },
+  { id: 'gemini-3.1-flash-lite', label: 'Gemini 3.1 Flash-Lite', hint: 'O mais econômico • respostas rápidas e cota maior' },
+  { id: 'gemini-flash-latest', label: 'Flash mais recente (auto)', hint: 'Sempre o Flash mais novo do Google • nunca fica desatualizado' },
+  { id: 'gemini-3.1-pro-preview', label: 'Gemini 3.1 Pro', hint: 'Máxima qualidade • cota grátis limitada' },
 ]
+
+/**
+ * Modelos que a Google descontinuou (total ou para novas chaves) e para qual
+ * opção atual cada um deve ser migrado. Chaves novas (ex.: formato "AQ.") não
+ * conseguem mais usar os modelos 2.0/2.5.
+ */
+export const RETIRED_MODEL_MAP: Record<string, string> = {
+  'gemini-1.5-flash': 'gemini-3-flash-preview',
+  'gemini-1.5-flash-8b': 'gemini-3-flash-preview',
+  'gemini-1.5-pro': 'gemini-3.1-pro-preview',
+  'gemini-2.0-flash': 'gemini-3-flash-preview',
+  'gemini-2.0-flash-lite': 'gemini-3.1-flash-lite',
+  'gemini-2.5-flash': 'gemini-3-flash-preview',
+  'gemini-2.5-flash-lite': 'gemini-3.1-flash-lite',
+  'gemini-2.5-pro': 'gemini-3.1-pro-preview',
+}
 
 export const AI_PERSONAS: { id: AiPersona; label: string; description: string; prompt: string }[] = [
   {
@@ -83,7 +105,7 @@ export const AI_COMMENT_DETAILS: { id: AiCommentDetail; label: string; rule: str
 
 export const DEFAULT_AI_SETTINGS: AiSettings = {
   apiKey: '',
-  model: 'gemini-2.0-flash',
+  model: 'gemini-3-flash-preview',
   temperature: 0.4,
   persona: 'professor',
   commentDetail: 'medio',
@@ -106,9 +128,14 @@ export function getAiSettings(): AiSettings {
       typeof parsed.temperature === 'number' && parsed.temperature >= 0 && parsed.temperature <= 1
         ? parsed.temperature
         : DEFAULT_AI_SETTINGS.temperature
+    // Modelo salvo foi descontinuado pela Google? Migra para a opção atual.
+    const savedModel =
+      typeof parsed.model === 'string' && parsed.model.trim()
+        ? RETIRED_MODEL_MAP[parsed.model.trim()] ?? parsed.model.trim()
+        : DEFAULT_AI_SETTINGS.model
     return {
       apiKey: typeof parsed.apiKey === 'string' ? parsed.apiKey.trim() : '',
-      model: typeof parsed.model === 'string' && parsed.model.trim() ? parsed.model.trim() : DEFAULT_AI_SETTINGS.model,
+      model: savedModel,
       temperature,
       persona,
       commentDetail,

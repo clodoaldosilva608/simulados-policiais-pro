@@ -199,7 +199,7 @@ export function AiSettingsScreen({ onBack }: { onBack: () => void }) {
             <p className="text-sm font-semibold text-slate-800">Como criar a sua chave (2 minutos):</p>
             <ol className="mt-1.5 list-decimal space-y-0.5 pl-5 text-sm text-slate-600">
               <li>Toque no botão abaixo e entre com sua conta Google;</li>
-              <li>Toque em “Create API key” e copie a chave (começa com “AIza”);</li>
+              <li>Toque em “Create API key” e copie a chave (começa com “AIza” ou “AQ.”);</li>
               <li>Cole no campo aqui embaixo e toque em “Salvar chave”.</li>
             </ol>
             <Button
@@ -242,7 +242,7 @@ export function AiSettingsScreen({ onBack }: { onBack: () => void }) {
                   type={showKey ? 'text' : 'password'}
                   value={keyInput}
                   onChange={(e) => setKeyInput(e.target.value)}
-                  placeholder="AIza..."
+                  placeholder="AIza... ou AQ..."
                   autoComplete="off"
                   autoCapitalize="off"
                   spellCheck={false}

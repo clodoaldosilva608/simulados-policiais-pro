@@ -334,3 +334,29 @@ Work Log:
 Stage Summary:
 - App suporta PDFs escaneados/em imagem: quando a extração não encontra texto, a IA lê as páginas (OCR) e gera as questões — validado ponta a ponta no sandbox
 - Produção continua sem IA até o dono fornecer uma chave pública (recomendado: Gemini free tier aistudio.google.com ou Groq console.groq.com → só setar AI_API_BASE/AI_API_KEY/AI_MODEL e reimplantar; o resto já está pronto)
+
+---
+Task ID: 17
+Agent: main (Z.ai)
+Task: Aba "Configurações da IA" — configuração completa da IA + chave de API do Google AI Studio (BYOK) com botão para aistudio.google.com/apikey
+
+Work Log:
+- NOVA LIB src/lib/ai-settings.ts (isomórfica): store localStorage 'spp-ai-settings-v1' {apiKey, model, temperature, persona, commentDetail, instructions}; AI_MODELS (gemini-2.0-flash padrão, 2.5-flash, 2.5-flash-lite, 2.5-pro), AI_PERSONAS (professor/direto/coach com prompts), AI_COMMENT_DETAILS (resumido/médio/detalhado), getAiSettings/saveAiSettings (merge)/clearApiKey/maskApiKey/personaPrompt
+- GATEWAY (ai-gateway.ts): AiCallConfig {apiKey, model, temperature, maxTokens} por requisição; chave do ALUNO → endpoint OpenAI-compatível do Gemini (https://generativelanguage.googleapis.com/v1beta/openai/) com Bearer; visão: Gemini usa /chat/completions, gateway interno mantém /chat/completions/vision; providerErrorDetail agora lê corpo em ARRAY ([{"error":{"message"}}] formato real do Google — comprovado com curl) e anexa status HTTP ao erro
+- ROTAS: /api/generate e /api/transcribe aceitam apiKey/model/persona/commentDetail/instructions/temperature do body; ordem de provedores = chave do aluno (se enviada) → Z.ai (sandbox) → gateway do app; erros mapeados: 401/403/400+"api key" → 403 "Sua chave de IA foi recusada pelo Google..."; 429 → cota esgotada; mensagens orientam Menu → Configurações da IA
+- NOVA ROTA /api/ai/test: testa a chave com chamada mínima (max_tokens 16) e devolve {ok} ou {ok:false, error} acionável (recusada/cota/modelo 404/rede); sem chave → testa o provedor do app
+- PROMPT (question-gen.ts): buildPrompt(chunk, style, count, {commentDetail, instructions}) — regra do comentário por nível + bloco "INSTRUÇÕES ESPECIAIS DO ALUNO" (600 chars)
+- NOVA TELA ai-settings-screen.tsx (fase 'ia', padrão Pomodoro): cartão de status (verde "IA pronta" / âmbar "sem chave própria"), seção Chave de API com passo a passo + botão "Criar chave no Google AI Studio" (abre https://aistudio.google.com/apikey), campo colar com mostrar/ocultar, Salvar chave (toast), Testar chave (mensagem do Google na tela), chave atual mascarada + Remover; Modelo da IA (4 cards); Comportamento (3 personas + resumido/médio/detalhado); Instruções para a IA (textarea 600 chars + contador); Criatividade (Slider 0–1 com valor); salvamento automático
+- MENU (library-screen.tsx): item "Configurações da IA" com hint dinâmico (sem chave → "Conecte a sua chave gratuita do Google" / com chave → "Chave configurada • pronto para gerar"); prop onOpenAiSettings encadeada
+- UPLOAD (upload-dialog.tsx): lê settings ao abrir (ref snapshot), envia aiPayload em /api/generate e apiKey/model em /api/transcribe; guarda o PRIMEIRO erro real do servidor (firstServerError) e usa na etapa de erro (antes era "Falha na comunicação com a IA" genérica); banner âmbar "Conecte a sua chave de IA (grátis)" com [Criar chave grátis] (abre AI Studio) e [Colar minha chave] (fecha dialog e abre a aba); indicador verde "IA pronta usando a sua chave" quando configurada; botão "Configurações da IA" na tela de erro quando mensagem fala de chave; OCR trata 403/429 como indisponível e propaga serverError
+- page.tsx: fase 'ia' + redirecionamento conta-sem-acesso cobre 'ia'
+- Correções durante validação: parser de erro ARRAY do Google (causa do erro genérico em produção com chave inválida); GenerateAiConfig tipado; hint de detalhamento da tela
+- Deploys: dpl 7in53cf5x → fowemwf3u → 3jx1eosxb todos READY; prod HTTP 200; pushes 9849e32 + f7c117f (limpeza tool-results do repo)
+- VALIDAÇÃO LOCAL: build limpo; /api/ai/test sem chave → {ok:true,source:'app'} (Z.ai); /api/generate sem chave → 3 questões (Susp) e com persona/commentDetail → certo/errado coach resumido OK; fallback chave fake → gera via Z.ai
+- E2E PRODUÇÃO 390x844 (conta e2e.ai.t17, trial iniciado via UI): menu com hint correto; tela completa com todas as seções; chave fake colada → toast "Chave salva!" + mascarada "AIzaE2E••••7890" + badge "Chave configurada"; "Testar chave" → mensagem real "Chave recusada pelo Google. Confira se você copiou a chave completa (começa com "AIza")..." (comprova conectividade Vercel→Gemini); persona Direto + detalhado + Flash-Lite + instruções salvos e PERSISTENTES após reload (localStorage conferido); Slider criatividade 0.40→0.60 por teclado (mouse sintético não move Radix — limitação do harness, teclado confirma funcionalidade); menu hint virou "Chave configurada • pronto para gerar"; dialog upload com chave → "IA pronta usando a sua chave do Google AI Studio"; Remover chave → banner âmbar no dialog com "Criar chave grátis"/"Colar minha chave" (screenshot); "Colar minha chave" navega para a aba; 0 erros de console; screenshots /tmp/e2e-t17-*.png
+- Limpeza: conta e2e.ai.t17@gmail.com excluída via admin (HTTP ok); browser fechado
+
+Stage Summary:
+- ALUNO AGORA PODE USAR A PRÓPRIA CHAVE GRATUITA DO GOOGLE AI STUDIO: Menu → Configurações da IA → botão cria a chave no aistudio.google.com/apikey → cola → Salvar → (opcional) Testar; a chave fica SÓ no aparelho, é enviada apenas na requisição de geração e nunca armazenada no servidor
+- Com chave configurada, PDF→simulado FUNCIONA EM PRODUÇÃO (cota gratuita do Gemini do próprio aluno) — resolve a pendência do dono de fornecer AI_API_KEY pública
+- IA configurável: modelo (4 opções Gemini), comportamento (professor/direto/coach), tamanho dos comentários, instruções personalizadas e criatividade — aplicados à geração de questões e à leitura de PDFs escaneados

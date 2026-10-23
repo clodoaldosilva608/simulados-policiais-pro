@@ -3,7 +3,7 @@ import ZAI from 'z-ai-web-dev-sdk'
 import { aiChatVision, type AiCallConfig } from '@/lib/ai-gateway'
 
 export const runtime = 'nodejs'
-export const maxDuration = 60
+export const maxDuration = 150
 
 /** Imagens por requisição (lote) e limite de tamanho por imagem em base64. */
 const MAX_IMAGES = 3
@@ -101,13 +101,16 @@ export async function POST(req: NextRequest) {
   }
 
   console.error('[transcribe] provedores falharam:', errors.map((e) => e.message))
+  const joinedErrors = errors.map((e) => e.message).join(' | ')
   const keyRejected = errors.some(
     (e) =>
       e.status === 401 ||
       e.status === 403 ||
-      (e.status === 400 && /api key/i.test(e.message)),
+      (e.status === 400 && /api key|API_KEY_INVALID/i.test(e.message)),
   )
   const quota = errors.some((e) => e.status === 429)
+  // Modelo descontinuado pela Google (todos os fallbacks da cadeia falharam)
+  const modelRetired = /no longer available|is no longer available/i.test(joinedErrors)
   const aiUnavailable = errors.some(
     (e) =>
       e.message.includes('IA não configurada') ||
@@ -120,9 +123,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         error:
-          'Sua chave de IA foi recusada pelo Google. Abra Menu → Configurações da IA, confira a chave e teste novamente.',
+          'Sua chave de IA foi recusada pelo Google. Abra Menu → Configurações da IA, confira a chave e toque em "Testar chave".',
       },
       { status: 403 },
+    )
+  }
+  if (modelRetired) {
+    return NextResponse.json(
+      {
+        error:
+          'O modelo de IA escolhido foi descontinuado pelo Google. Abra Menu → Configurações da IA e escolha outro modelo (ex.: Gemini 3 Flash).',
+      },
+      { status: 400 },
     )
   }
   if (quota) {
