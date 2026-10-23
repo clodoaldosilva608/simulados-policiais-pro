@@ -12,7 +12,7 @@ import type { Question, TextBlock } from '@/data/types'
  */
 
 const DB_NAME = 'simulados-policiais-pro'
-const DB_VERSION = 1
+const DB_VERSION = 2
 
 export type LocalDocStyle = 'multipla' | 'certo_errado'
 export type LocalDocStatus = 'processing' | 'ready' | 'error'
@@ -75,6 +75,9 @@ function openDb(): Promise<IDBDatabase> {
         const store = db.createObjectStore('attempts', { keyPath: 'id' })
         store.createIndex('byDoc', 'docId', { unique: false })
       }
+      if (!db.objectStoreNames.contains('errors')) {
+        db.createObjectStore('errors', { keyPath: 'id' })
+      }
     }
     req.onsuccess = () => resolve(req.result)
     req.onerror = () => reject(req.error ?? new Error('Falha ao abrir o banco local'))
@@ -89,7 +92,7 @@ function reqAsPromise<T>(req: IDBRequest<T>): Promise<T> {
 }
 
 async function withStore<T>(
-  name: 'documents' | 'attempts',
+  name: 'documents' | 'attempts' | 'errors',
   mode: IDBTransactionMode,
   fn: (store: IDBObjectStore) => IDBRequest<T> | void,
 ): Promise<T | undefined> {
@@ -224,6 +227,122 @@ export async function listLocalAttempts(docId: string): Promise<LocalAttempt[]> 
     return list.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
   } catch {
     return []
+  }
+}
+
+/**
+ * CADERNO DE ERROS — toda questão respondida incorretamente entra aqui
+ * para o aluno revisar e responder de novo mais tarde. A questão é
+ * "dominada" quando acertada em pelo menos uma revisão.
+ */
+export interface WrongQuestion {
+  /** `${docId}:${questionId}` */
+  id: string
+  docId: string
+  docTitle: string
+  questionId: number
+  /** Nome de exibição da disciplina */
+  subject: string
+  statement: string
+  textRef?: string
+  /** Texto base associado à questão (quando houver), para contexto na revisão */
+  textBlock?: { title: string; paragraphs: string[]; source?: string }
+  style: 'multipla' | 'certo_errado'
+  options: { key: OptionKey; html: string }[]
+  answer: OptionKey
+  comment: string
+  timesMissed: number
+  timesCorrectReview: number
+  /** ISO date da última vez que errou */
+  lastMissedAt: string
+}
+
+export type WrongQuestionInput = Omit<WrongQuestion, 'timesMissed' | 'timesCorrectReview'>
+
+/** Registra (ou atualiza) as questões erradas na finalização de uma prova */
+export async function recordWrongQuestions(entries: WrongQuestionInput[]): Promise<void> {
+  if (entries.length === 0) return
+  try {
+    await withStore('errors', 'readwrite', (s) => {
+      for (const entry of entries) {
+        const req = s.get(entry.id)
+        req.onsuccess = () => {
+          const existing = req.result as WrongQuestion | undefined
+          if (existing) {
+            s.put({
+              ...existing,
+              ...entry,
+              timesMissed: (existing.timesMissed ?? 0) + 1,
+              lastMissedAt: entry.lastMissedAt,
+            })
+          } else {
+            s.put({ ...entry, timesMissed: 1, timesCorrectReview: 0 })
+          }
+        }
+      }
+    })
+  } catch {
+    /* caderno é opcional */
+  }
+}
+
+/** Todas as questões erradas (mais recentes primeiro) */
+export async function listWrongQuestions(): Promise<WrongQuestion[]> {
+  try {
+    const list =
+      (await withStore('errors', 'readonly', (s) => s.getAll() as IDBRequest<WrongQuestion[]>)) ?? []
+    return list.sort((a, b) => (a.lastMissedAt < b.lastMissedAt ? 1 : -1))
+  } catch {
+    return []
+  }
+}
+
+export async function countWrongQuestions(): Promise<number> {
+  try {
+    return (await withStore('errors', 'readonly', (s) => s.count() as IDBRequest<number>)) ?? 0
+  } catch {
+    return 0
+  }
+}
+
+/** Resultado da revisão: acertou vira "dominada"; errou de novo soma mais um erro */
+export async function markWrongQuestionResult(id: string, correct: boolean): Promise<void> {
+  try {
+    await withStore('errors', 'readwrite', (s) => {
+      const req = s.get(id)
+      req.onsuccess = () => {
+        const existing = req.result as WrongQuestion | undefined
+        if (existing) {
+          s.put({
+            ...existing,
+            timesMissed: correct ? existing.timesMissed : existing.timesMissed + 1,
+            timesCorrectReview: correct ? existing.timesCorrectReview + 1 : existing.timesCorrectReview,
+          })
+        }
+      }
+    })
+  } catch {
+    /* opcional */
+  }
+}
+
+export async function removeWrongQuestion(id: string): Promise<void> {
+  try {
+    await withStore('errors', 'readwrite', (s) => {
+      s.delete(id)
+    })
+  } catch {
+    /* opcional */
+  }
+}
+
+export async function clearWrongQuestions(): Promise<void> {
+  try {
+    await withStore('errors', 'readwrite', (s) => {
+      s.clear()
+    })
+  } catch {
+    /* opcional */
   }
 }
 

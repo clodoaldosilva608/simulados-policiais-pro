@@ -6,6 +6,7 @@ import {
   AlertTriangle,
   BadgeCheck,
   BookOpen,
+  BookX,
   CheckCircle2,
   ChevronRight,
   Crown,
@@ -21,9 +22,11 @@ import {
   Play,
   Plus,
   RotateCcw,
+  Share2,
   ShieldCheck,
   Sparkles,
   Target,
+  Timer,
   Trash2,
   Upload,
   UserRound,
@@ -57,6 +60,7 @@ import {
   SheetTrigger,
 } from '@/components/ui/sheet'
 import { SITE } from '@/config/site'
+import { shareApp } from '@/lib/share'
 import {
   OFFICIAL_PACKS,
   STATIC_PACK,
@@ -113,6 +117,12 @@ interface LibraryScreenProps {
   onManageAccess: () => void
   /** Abre a tela Meu desempenho (aba resumo) ou Meu histórico (aba historico) */
   onOpenPerformance: (tab: 'resumo' | 'historico') => void
+  /** Abre o cronômetro Pomodoro de estudo */
+  onOpenPomodoro: () => void
+  /** Abre o caderno de erros (questões erradas para revisar) */
+  onOpenErrors: () => void
+  /** Quantidade de questões no caderno de erros (badge do menu) */
+  errorCount?: number
   /** Encerra a sessão nesta conta/aparelho (menu hambúrguer) */
   onSignOut: () => void
 }
@@ -175,12 +185,15 @@ function MenuItem({
   icon: Icon,
   label,
   hint,
+  badge,
   onClick,
   href,
 }: {
   icon: typeof UserRound
   label: string
   hint?: string
+  /** Contador destacado (ex. questões no caderno de erros) */
+  badge?: number
   onClick: () => void
   /** Quando definido, renderiza <a> em vez de botão */
   href?: string
@@ -194,6 +207,11 @@ function MenuItem({
         <p className="truncate text-sm font-bold text-slate-800">{label}</p>
         {hint && <p className="truncate text-xs text-slate-500">{hint}</p>}
       </div>
+      {badge !== undefined && badge > 0 && (
+        <span className="flex h-6 min-w-6 shrink-0 items-center justify-center rounded-full bg-slate-900 px-1.5 text-[11px] font-black text-amber-300">
+          {badge > 99 ? '99+' : badge}
+        </span>
+      )}
       <ChevronRight className="h-4 w-4 shrink-0 text-slate-400" />
     </>
   )
@@ -316,6 +334,9 @@ export function LibraryScreen({
   stats,
   onManageAccess,
   onOpenPerformance,
+  onOpenPomodoro,
+  onOpenErrors,
+  errorCount,
   onSignOut,
 }: LibraryScreenProps) {
   const [menuOpen, setMenuOpen] = useState(false)
@@ -553,6 +574,34 @@ export function LibraryScreen({
                     }}
                   />
                   <MenuItem
+                    icon={Timer}
+                    label="Pomodoro"
+                    hint="Foco com intervalos e sinal sonoro"
+                    onClick={() => {
+                      setMenuOpen(false)
+                      onOpenPomodoro()
+                    }}
+                  />
+                  <MenuItem
+                    icon={BookX}
+                    label="Caderno de erros"
+                    hint="Questões que você errou para revisar"
+                    badge={errorCount}
+                    onClick={() => {
+                      setMenuOpen(false)
+                      onOpenErrors()
+                    }}
+                  />
+                  <MenuItem
+                    icon={Share2}
+                    label="Convidar amigos"
+                    hint="Mostre o app para outros concurseiros"
+                    onClick={() => {
+                      setMenuOpen(false)
+                      shareApp()
+                    }}
+                  />
+                  <MenuItem
                     icon={LifeBuoy}
                     label="Suporte"
                     hint={SITE.supportEmail}
@@ -724,6 +773,23 @@ export function LibraryScreen({
                   Polícia Penal) ou transforme um PDF em simulado — seus acertos e erros aparecerão aqui.
                 </p>
               )}
+              {/* Compartilhar o app com os amigos */}
+              <button
+                type="button"
+                onClick={shareApp}
+                className="mt-4 flex w-full items-center gap-3 rounded-xl border border-dashed border-amber-400/70 bg-amber-400/10 px-4 py-3 text-left transition-colors hover:bg-amber-400/20"
+              >
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-400 text-slate-950">
+                  <Share2 className="h-4.5 w-4.5" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-bold text-slate-900">Está gostando? Compartilhe!</p>
+                  <p className="truncate text-xs text-slate-500">
+                    Chame seus amigos concurseiros para estudar com você
+                  </p>
+                </div>
+                <ChevronRight className="h-4 w-4 shrink-0 text-amber-600" />
+              </button>
             </div>
           </section>
         )}

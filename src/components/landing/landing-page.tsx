@@ -12,6 +12,7 @@ import {
   ListOrdered,
   Lock,
   PlayCircle,
+  Share2,
   ShieldCheck,
   Smartphone,
   Sparkles,
@@ -41,6 +42,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import { OFFICIAL_PACKS, STATIC_PACK } from '@/data/simulado'
 import { SITE, checkoutConfigured } from '@/config/site'
+import { shareApp } from '@/lib/share'
 
 interface LandingPageProps {
   /** Botão "Já sou assinante" */
@@ -189,6 +191,12 @@ export function LandingPage({ onEnterAccess, onStartTrial }: LandingPageProps) {
                 >
                   Assinar {SITE.price}{SITE.period}
                   <ChevronRight className="ml-1 h-4 w-4 text-amber-400" />
+                </Button>
+                <Button
+                  onClick={shareApp}
+                  className="h-[52px] border border-slate-700 bg-transparent px-6 text-base font-bold text-slate-200 hover:bg-slate-800 hover:text-white"
+                >
+                  <Share2 className="mr-2 h-5 w-5 text-amber-400" /> Compartilhar
                 </Button>
               </div>
               <p className="mt-3 text-xs text-slate-400">
@@ -396,6 +404,13 @@ export function LandingPage({ onEnterAccess, onStartTrial }: LandingPageProps) {
                 className="h-12 w-full max-w-xs font-bold text-slate-300 hover:bg-slate-800 hover:text-white sm:w-auto"
               >
                 <Lock className="mr-2 h-4 w-4" /> Já sou assinante
+              </Button>
+              <Button
+                onClick={shareApp}
+                variant="ghost"
+                className="h-12 w-full max-w-xs font-bold text-slate-300 hover:bg-slate-800 hover:text-white sm:w-auto"
+              >
+                <Share2 className="mr-2 h-4 w-4 text-amber-400" /> Compartilhar com os amigos
               </Button>
             </div>
             <div className="mt-6 flex flex-wrap items-center justify-center gap-2 text-[11px] text-slate-400">

@@ -6,6 +6,8 @@ import { LandingPage } from '@/components/landing/landing-page'
 import { AccessScreen } from '@/components/simulado/access-screen'
 import { LibraryScreen, type SavedInfo, type DashboardStats } from '@/components/simulado/library-screen'
 import { PerformanceScreen, type PerfTab } from '@/components/simulado/performance-screen'
+import { PomodoroScreen } from '@/components/simulado/pomodoro-screen'
+import { ErrorsScreen } from '@/components/simulado/errors-screen'
 import { WelcomeScreen, type AttemptInfo } from '@/components/simulado/welcome-screen'
 import { ExamScreen } from '@/components/simulado/exam-screen'
 import { ResultsScreen } from '@/components/simulado/results-screen'
@@ -29,8 +31,11 @@ import {
   listLocalAttempts,
   listAllLocalAttempts,
   hasAttemptWithId,
+  recordWrongQuestions,
+  countWrongQuestions,
   localDocToPack,
   type LocalAttempt,
+  type WrongQuestionInput,
 } from '@/lib/local-db'
 
 function statsFromAttempts(attempts: LocalAttempt[]): DashboardStats {
@@ -97,7 +102,7 @@ function displayNameOf(user: { name?: string; email?: string } | null | undefine
     .join(' ')
 }
 
-type Phase = 'landing' | 'access' | 'library' | 'desempenho' | 'welcome' | 'exam' | 'results' | 'review'
+type Phase = 'landing' | 'access' | 'library' | 'desempenho' | 'pomodoro' | 'erros' | 'welcome' | 'exam' | 'results' | 'review'
 
 const storageKeyFor = (docId: string) => `simulado-${docId}`
 
@@ -254,6 +259,7 @@ export default function Home() {
   const [stats, setStats] = useState<DashboardStats | null>(null)
   // Histórico completo (tela Meu desempenho → aba Histórico)
   const [allAttempts, setAllAttempts] = useState<LocalAttempt[]>([])
+  const [errorCount, setErrorCount] = useState(0)
   const [perfTab, setPerfTab] = useState<PerfTab>('resumo')
 
   // Simulado ativo
@@ -309,6 +315,17 @@ export default function Home() {
       /* métricas são opcionais */
     }
   }, [])
+
+  /** Contador do caderno de erros (badge no menu) */
+  const refreshErrorCount = useCallback(() => {
+    void countWrongQuestions()
+      .then((count) => setErrorCount(count))
+      .catch(() => setErrorCount(0))
+  }, [])
+
+  useEffect(() => {
+    refreshErrorCount()
+  }, [refreshErrorCount])
 
   // Métricas: migra estados antigos e soma todas as tentativas do aparelho
   useEffect(() => {
@@ -469,9 +486,32 @@ export default function Home() {
       timeUsedMs: (finished.finishedAt ?? Date.now()) - finished.startedAt,
       createdAt: new Date().toISOString(),
     }).then(() => void recomputeStats())
+    // CADERNO DE ERROS: toda questão respondida errada entra para revisão futura
+    const subjectNames = subjectNameMap(pack)
+    const missedAt = new Date().toISOString()
+    const wrongEntries: WrongQuestionInput[] = pack.questions
+      .filter((q) => finished.answers[q.id] && finished.answers[q.id] !== q.answer)
+      .map((q) => ({
+        id: `${pack.id}:${q.id}`,
+        docId: pack.id,
+        docTitle: pack.title,
+        questionId: q.id,
+        subject: subjectNames.get(q.subjectId) ?? q.subjectId,
+        statement: q.statement,
+        textRef: q.textRef,
+        textBlock: q.textRef ? pack.textBlocks[q.textRef] : undefined,
+        style: q.options.length <= 2 ? 'certo_errado' : 'multipla',
+        options: q.options,
+        answer: q.answer,
+        comment: q.comment,
+        lastMissedAt: missedAt,
+      }))
+    if (wrongEntries.length > 0) {
+      void recordWrongQuestions(wrongEntries).then(() => void refreshErrorCount())
+    }
     setSavedMeta((m) => ({ finished: true, mode: m?.mode ?? 'prova', name: m?.name ?? '' }))
     setPhase('results')
-  }, [state, pack, recomputeStats])
+  }, [state, pack, recomputeStats, refreshErrorCount])
 
   const handleDelete = useCallback(
     async (docId: string) => {
@@ -567,6 +607,9 @@ export default function Home() {
           setPerfTab(tab)
           setPhase('desempenho')
         }}
+        onOpenPomodoro={() => setPhase('pomodoro')}
+        onOpenErrors={() => setPhase('erros')}
+        errorCount={errorCount}
         onSignOut={() => void session.logout()}
       />
     )
@@ -589,6 +632,14 @@ export default function Home() {
         onSubscribe={() => window.open(SITE.checkoutUrl, '_blank', 'noopener,noreferrer')}
       />
     )
+  }
+
+  if (phase === 'pomodoro') {
+    return <PomodoroScreen onBack={() => setPhase('library')} />
+  }
+
+  if (phase === 'erros') {
+    return <ErrorsScreen onBack={() => setPhase('library')} />
   }
 
   // Telas que dependem do pack
