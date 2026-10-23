@@ -516,3 +516,28 @@ Stage Summary:
 - O aluno ganhou o "Qconcursos" interno: aba Banco de Questões com filtros por banca/matéria/concurso/nível/ano, prática aleatória reaproveitando o fluxo completo de simulado, materiais de estudo e pop-ups do admin
 - Plano grátis unificado em 15 questões/dia (cota client + servidor + landing + dashboard, tudo editável no admin); plano pago ilimitado com comentários como diferencial
 - Pendências: rotacionar tokens antigos (vcp_/ghp_); migrar content stores para Postgres na escala de 10k+ usuários; expandir o banco de questões via CSV (template no painel)
+
+---
+Task ID: 24
+Agent: main (Z.ai)
+Task: Pesquisar provas reais na web, importar CENTENAS de questões via CSV, criar pop-ups de conversão com CTA para o checkout e botão de compartilhar questão (screenshot) em cada questão
+
+Work Log:
+- PESQUISA WEB: confirmadas as fontes reais (PF 2025 Cebraspe aplicada 27/07/2025 C/E; PRF 2021 Cebraspe; provas de GM VUNESP — Jundiaí 2023, Catanduva 2024, GCM-SP 2013; PM-SP Soldado VUNESP 60 questões; provas de Agente de Trânsito DETRAN-SP/FUNCERN 2024) + texto LITERAL da Lei 13.022/2014 extraído do Planalto (WebFetch) — corrigiu pontos de memória (art. 2º = proteção municipal preventiva; princípios no art. 3º, incluindo uso progressivo da força; efetivos máximos no art. 7º; porte no art. 16; vedação a regulamento militar no art. 14 § único)
+- BANCO EXPANDIDO DE 53 → 568 QUESTÕES (import CSV via /api/admin/questions/import em 2 lotes de ≤500):
+  • 293 questões REAIS das provas oficiais já transcritas no app (PF 2025 = 51, PC-CE 2025 Delegado = 89, PM-RJ 2024 FGV = 48, PRF 2021 = 91, Polícia Penal = 14) com gabarito oficial e comentário de fonte
+  • 222 inéditas autorais estilo banca com comentário: PF (constitucional 18, penal 19, processual 15, administrativo 12, criminologia 15 — C/E estilo Cebraspe), PRF trânsito C/E 17, Agente de Trânsito MC 31 (pontos/multas/prazos/placas/Lei 14.071), GM 49 (Lei 13.022 15, const/adm 14, português 10, DDHH+socorros 10), PM 31 (port/mát/RacLógio + const/Lei 10.826/SUSP/DDHH), Polícia Penal LEP 15
+- FONTE VERSIONADA: scripts/bank-data/*.ts (14 arquivos por carreira) + scripts/build-bank-csv.ts (valida enunciado/alternativas/gabarito, dedupe, gera CSV ';' com aspas) → 515 linhas, 0 erros de validação; bank-out/ no .gitignore
+- BUG PEGO NO IMPORT: lote 2 foi dividido sem o cabeçalho do CSV (tail) → parser rejeitou 258 linhas com "Banca obrigatória"; corrigido reanexando o header (258/258 inseridos, total 568 confirmado via admin e via UI do aluno "568 questões disponíveis")
+- COMPARTILHAR QUESTÃO (novo): src/lib/question-share.ts (captureAndShareQuestion: html-to-image toPng pixelRatio 2 + composição em canvas com faixa de marca "Simulados Policiais Pro" + URL) + src/components/simulado/share-question-button.tsx (data-share-hide para o botão sair da captura). Botão adicionado EM CADA QUESTÃO no exam-screen (cabeçalho, ao lado de Sinalizar) e no review-screen (todas as questões listadas)
+- Fluxo de compartilhamento: Web Share API com arquivo (menu nativo do celular — WhatsApp/Instagram/Telegram) → fallback desktop: baixa PNG + copia convite + abre wa.me com texto pré-preenchido ("Resolvi essa questão real... e você acertaria?")
+- POP-UPS DE CONVERSÃO criados via /api/admin/popups com CTA → https://pay.cakto.com.br/v5zisya: (1) "Banco de Questões TURBINADO!" library+banco, daily, 6s, amber; (2) "Sua aprovação não pode esperar" exam, session, 12s, emerald; (3) "Você finalizou o simulado!" results+review, daily, 3s, sky — os 3 com copy de conversão (15/dia grátis × ilimitado PRO, comentário de professor, <R$0,60/dia)
+- DEPLOY: dpl simuladospoliciais-76lspa9w4 READY, prod HTTP 200; /api/config confirma checkoutUrl
+- E2E PRODUÇÃO (390×844): conta teste criada → dashboard → pop-up library EXIBIU → banco mostra 568 questões → filtro banca Cebraspe = 250 → prática 10 questões (questão real PC-CE/administrativo) → botão Compartilhar no exame: clique gerou a imagem e abriu wa.me (aba t2 confirma fallback) → pop-up do EXAME apareceu (Assinar PRO agora) → finalizou → pop-up de RESULTADOS apareceu (Ver o plano PRO) → revisão com botão Compartilhar em TODAS as questões → clique na revisão também abriu wa.me → 0 erros de console → conta de teste excluída via admin (total voltou a 3)
+- Push GitHub f2924b3..6bd2bb1; cookies/senhas de teste removidos de /tmp
+
+Stage Summary:
+- O banco de questões estilo Qconcursos está populado com 568 questões (reais + inéditas), filtráveis por banca/matéria/concurso/nível/ano, com cota 15/dia no grátis e ilimitado no PRO
+- Cada questão agora é viral: um clique gera imagem da tela da questão com marca do app e abre o compartilhamento nativo (WhatsApp em grupos é o principal canal de aquisição)
+- O funil de conversão tem 3 pontos de contato automáticos configuráveis no admin (banco, exame, resultados) com CTA direto para o checkout Cakto
+- Pendências: importar mais lotes por carreira se o owner quiser 1000+; token vcp_ seguindo em uso temporário (rotacionar); html-to-image pode falhar com imagens externas sem CORS (raro; toast silencioso)
