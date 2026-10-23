@@ -360,3 +360,29 @@ Stage Summary:
 - ALUNO AGORA PODE USAR A PRÓPRIA CHAVE GRATUITA DO GOOGLE AI STUDIO: Menu → Configurações da IA → botão cria a chave no aistudio.google.com/apikey → cola → Salvar → (opcional) Testar; a chave fica SÓ no aparelho, é enviada apenas na requisição de geração e nunca armazenada no servidor
 - Com chave configurada, PDF→simulado FUNCIONA EM PRODUÇÃO (cota gratuita do Gemini do próprio aluno) — resolve a pendência do dono de fornecer AI_API_KEY pública
 - IA configurável: modelo (4 opções Gemini), comportamento (professor/direto/coach), tamanho dos comentários, instruções personalizadas e criatividade — aplicados à geração de questões e à leitura de PDFs escaneados
+
+---
+Task ID: 18
+Agent: main (Z.ai)
+Task: Aluno criou chave nova no AI Studio (formato "AQ.") mas PDF→simulado continuava falhando ("Serviço de leitura por IA temporariamente indisponível")
+
+Work Log:
+- Diagnóstico: botão "Testar chave" chamava POST /api/ai/test que NÃO EXISTIA (404 → "Falha de conexão"); criada src/app/api/ai/test/route.ts (testa OpenAI-compat + nativo, lista modelos da chave, mensagens amigáveis) — e usada como ferramenta de diagnóstico em produção
+- ROOT CAUSE 1: Google DESCONTINUOU gemini-2.0-flash (todos os usuários) e 2.5-flash/2.5-flash-lite/2.5-pro ("no longer available to NEW users") — chaves novas (formato AQ., out/2026) só usam geração 3.x; o catálogo/padrão do app era 2.0-flash → 404 → 503 genérico
+- Modelos válidos testados com a chave do aluno via /api/ai/test em produção (Vercel hkg1): gemini-3-flash-preview ✓, gemini-3.1-flash-lite ✓, gemini-flash-lite-latest ✓, gemini-flash-latest (503 sobrecarga), gemini-3.1-pro-preview (429 cota baixa), gemini-3.8-flash (timeout >25s)
+- ROOT CAUSE 2 (2º deploy): /api/generate estourava 60s — Gemini 3.x "pensa" por padrão (sem thinkingBudget) e a 1ª tentativa lenta abortava a cadeia inteira ('This operation was aborted' nos logs da Vercel)
+- ai-settings.ts: AI_MODELS → [gemini-3-flash-preview (padrão), gemini-3.1-flash-lite, gemini-flash-latest, gemini-3.1-pro-preview] + RETIRED_MODEL_MAP (migra modelo salvo 1.5/2.0/2.5 automaticamente ao carregar)
+- ai-gateway.ts reescrito: BYOK usa API NATIVA (generateContent + x-goog-api-key, texto com systemInstruction, visão com inlineData) com cadeia de fallback de modelos (404/503/429/timeout → próximo modelo, orçamento de tempo compartilhado 130s), thinkingBudget 0 nos Flash/Lite (com retry sem o campo se o modelo recusar), fallback final OpenAI-compat; caminho por env (AI_API_BASE/AI_API_KEY) preservado
+- generate/transcribe: maxDuration 60→150; classificador de erros ganhou modelRetired ("O modelo de IA escolhido foi descontinuado...") e mensagens citam "AIza ou AQ."
+- Tela AI settings: textos atualizados ("começa com AIza ou AQ.", placeholder) 
+- .gitignore: regra bare "test" (que escondia src/app/api/ai/test — provável causa da rota ter sumido antes) ancorada para /test
+- Deploys: dpl 6mrogfxi8 (rota test) → 3kxsvw2m0 (catálogo+gateway v1) → l0e6prrun (thinking+chain) → lphyg3mie (timeouts 150s) — todos READY, prod HTTP 200; .vercel/project.json recriado (workspace reset de novo)
+- VALIDAÇÃO PRODUÇÃO com a chave AQ. do próprio aluno: /api/generate com modelo ANTIGO gemini-2.0-flash → 3 questões em 32s (cadeia salvou); /api/transcribe → OCR exato de imagem de teste em 13s; /api/ai/test → ok:true; E2E browser 390x844 (conta e2e.ai.t18, trial via API): tela IA com 4 novos modelos, chave colada → mascarada "AQ.Ab8RN••••••••v-6w" → Testar chave → "Chave funcionando! A IA está pronta para gerar simulados."; PDF ESCANEADO (imagem sem texto, Art. 144 CF) → OCR → 5 questões → "Simulado pronto para estudar" → biblioteca "Pronto • 5 questões" → simulado abre e a Q1 é fiel ao texto ("Dever do Estado, direito e responsabilidade de todos") — screenshots /tmp/e2e-t18-*.png
+- Limpeza: conta e2e.ai.t18@gmail.com excluída via admin (login com "username", não "user"); browser fechado; /tmp/.env.local removido abaixo
+- Push GitHub: 7f507b1
+
+Stage Summary:
+- CAUSA: Google aposentou os modelos 2.0/2.5 (para chaves novas, só a geração 3.x funciona) e o app inteiro (padrão + testes de chave) usava 2.0-flash; a chave "AQ." do aluno SEMPRE ESTEVE VÁLIDA
+- Aluno agora usa a própria cota gratuita Gemini de verdade: catálogo atualizado com migração automática, cadeia de fallback anti-descontinuação, "Testar chave" funcional com mensagem real do Google
+- E2E de ponta a ponta em produção comprovou: PDF escaneado → leitura por IA → simulado jogável com gabarito comentado, usando a chave do próprio aluno
+- Pendência: possíveis reforços futuros = remover contas de teste antigas com modelo 2.0 salvo (migração já resolve na carga) e monitorar quando a Google aposentar os modelos 3-preview (a cadeia já se defende sozinha)
