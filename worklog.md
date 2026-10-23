@@ -292,3 +292,20 @@ Stage Summary:
 - MONETIZAÇÃO: pop-up assinante pós-prova (CTA valor acessível, cooldown 3d) + banner de urgência já existente
 - CRESCIMENTO: pop-up compartilhar (WhatsApp/Telegram nativo), desafio por link (?desafio=&de=) na landing, botões de desafio/compartilhar no resultado
 - ENGAJAMENTO: repetição espaçada 3/7/15 no caderno, gráfico de evolução semanal, meta semanal de questões com barra, simulado aleatório configurável, notificações + lembrete diário do Pomodoro
+
+---
+Task ID: 15
+Agent: main (Z.ai)
+Task: Aceitar arquivos PDF de até 50 MB no upload (antes 25 MB)
+
+Work Log:
+- upload-dialog.tsx: MAX_FILE_SIZE 25→50 MB (50*1024*1024); mensagem de erro "Arquivo muito grande (máximo 50 MB)."; zona de soltar arquivo "até 50 MB"
+- CORREÇÃO EXTRA: drag & drop da biblioteca (library-screen.tsx handleDrop → initialFile) BYPASSAVA a validação de tamanho (só o input de clique validava) — adicionada checagem no efeito de abertura do dialog: initialFile > MAX_FILE_SIZE → step 'error' com a mesma mensagem
+- library-screen.tsx: selo da seção de upload "PDFs de até 25 MB" → "PDFs de até 50 MB"
+- Segurança da mudança: extração de texto é 100% CLIENTE (unpdf/pdf.js — nada sobe para o servidor, sem risco no body limit da Vercel); chunkText já limita a 10 blocos × 7k chars, então PDF gigante não explode a fila de IA
+- Deploy: link .vercel do workspace tinha sumido (1º deploy foi para projeto acidental "deploy-src" — CORRIGIDO: projeto criado por engano EXCLUÍDO da conta via API, HTTP 204); .vercel/project.json recriado com prj_FJzi584zmq8QjdBZcd5TA80G9Bin (salvo também em /home/z/my-project/.vercel p/ próximos deploys) → deploy READY dpl simuladospoliciais-53glflsgn, prod HTTP 200; push GitHub 0278810
+- E2E PRODUÇÃO 390x844 (conta e2e.upload.t15@gmail.com): biblioteca com selo "PDFs de até 50 MB" (eval innerText); dialog "Editais, apostilas, resumos • até 50 MB"; PDF de 70,7 MB REJEITADO na hora com "Arquivo muito grande (máximo 50 MB)." (screenshot /tmp/e2e-t15-rejeitado-70mb.png); PDF de 42,93 MB ACEITO (seria barrado no limite antigo de 25) → extração cliente OK → IndexedDB mostra {fileSizeMB: 42.93, pages: 1, charCount: 1759, chunksTotal: 1}; geração IA falhou como esperado (AI_API_KEY não configurada na Vercel — pendência documentada do dono desde a Task 3, fora do escopo)
+- Limpeza: conta e2e.upload.t15@gmail.com excluída via admin (restam só as do dono); PDFs de teste removidos de /tmp; browser fechado
+
+Stage Summary:
+- Upload de PDF agora aceita arquivos de ATÉ 50 MB (era 25), com validação também no drag & drop; textos e mensagens atualizados; em produção com E2E de aceitação (42,93 MB) e rejeição (70,7 MB)
