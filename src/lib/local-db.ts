@@ -35,6 +35,11 @@ export interface LocalDocument {
   createdAt: string
   questions: Question[]
   textBlocks: Record<string, TextBlock>
+  /** OCR de PDF em imagem: metadados da leitura por IA (opcional) */
+  ocrUsed?: boolean
+  ocrText?: string
+  ocrPagesDone?: number
+  ocrPagesTotal?: number
 }
 
 export interface LocalAttempt {

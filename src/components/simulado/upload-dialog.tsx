@@ -23,6 +23,7 @@ import { Label } from '@/components/ui/label'
 import { Progress } from '@/components/ui/progress'
 import { useToast } from '@/hooks/use-toast'
 import { extractPdfText, chunkText } from '@/lib/pdf-text'
+import { openPdfForRender, renderPdfPageToJpegDataUrl } from '@/lib/pdf-ocr'
 import {
   putLocalDocument,
   getLocalDocument,
@@ -42,7 +43,7 @@ interface UploadDialogProps {
   onCompleted: () => void
 }
 
-type Step = 'form' | 'extracting' | 'generating' | 'done' | 'error'
+type Step = 'form' | 'extracting' | 'ocr' | 'generating' | 'done' | 'error'
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024 // 50 MB
 
@@ -58,6 +59,8 @@ export function UploadDialog({ open, onOpenChange, resumeDocId, initialFile, onC
   const [chunksTotal, setChunksTotal] = useState(0)
   const [pages, setPages] = useState<number | null>(null)
   const [charCount, setCharCount] = useState<number | null>(null)
+  const [ocrPagesDone, setOcrPagesDone] = useState(0)
+  const [ocrPagesTotal, setOcrPagesTotal] = useState<number | null>(null)
   const [errorMsg, setErrorMsg] = useState('')
   const cancelled = useRef(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -193,6 +196,14 @@ export function UploadDialog({ open, onOpenChange, resumeDocId, initialFile, onC
         setStep('done')
         return
       }
+      if (doc.ocrPagesTotal && doc.chunksTotal === 0 && doc.questions.length === 0) {
+        // OCR interrompido no meio (o arquivo original não fica salvo no aparelho)
+        setStep('error')
+        setErrorMsg(
+          'A leitura por IA deste PDF ficou incompleta. Envie o arquivo novamente para gerar o simulado do zero.',
+        )
+        return
+      }
       await runGeneration(doc)
     },
     [runGeneration],
@@ -225,10 +236,84 @@ export function UploadDialog({ open, onOpenChange, resumeDocId, initialFile, onC
         setChunksTotal(0)
         setPages(null)
         setCharCount(null)
+        setOcrPagesDone(0)
+        setOcrPagesTotal(null)
       }
     }, 0)
     return () => window.clearTimeout(timer)
   }, [open, resumeDocId, initialFile, resumeGeneration])
+
+  /** Header de acesso (código/assinatura) para as chamadas de IA */
+  const buildAccessHeader = useCallback((): Record<string, string> => {
+    try {
+      const raw = window.localStorage.getItem('spp-license-v1')
+      if (raw) {
+        const parsed = JSON.parse(raw) as { code?: string }
+        if (parsed.code) return { 'x-access-code': parsed.code }
+      }
+    } catch {
+      /* sem código */
+    }
+    return {}
+  }, [])
+
+  /**
+   * Leitura por IA (OCR) de PDF em imagem: renderiza as páginas no navegador e
+   * envia lotes de 3 para /api/transcribe. Devolve o texto + total de páginas,
+   * ou null se cancelado.
+   */
+  const runOcr = useCallback(
+    async (
+      buffer: Uint8Array,
+      baseDoc: LocalDocument,
+      accessHeader: Record<string, string>,
+    ): Promise<{ text: string; totalPages: number; unavailable: boolean } | null> => {
+      setStep('ocr')
+      const pdf = await openPdfForRender(buffer)
+      const totalPages = pdf.numPages
+      setPages(totalPages)
+      setOcrPagesTotal(totalPages)
+      setOcrPagesDone(0)
+
+      const BATCH = 3
+      let ocrText = ''
+      let unavailable = false
+      for (let start = 1; start <= totalPages; start += BATCH) {
+        if (cancelled.current) return null
+        const end = Math.min(start + BATCH - 1, totalPages)
+        const dataUrls: string[] = []
+        for (let p = start; p <= end; p++) {
+          if (cancelled.current) return null
+          dataUrls.push(await renderPdfPageToJpegDataUrl(pdf, p))
+        }
+        let batchText = ''
+        for (let attempt = 0; attempt < 2 && !batchText; attempt++) {
+          try {
+            const res = await fetch('/api/transcribe', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', ...accessHeader },
+              body: JSON.stringify({ images: dataUrls }),
+            })
+            const data = (await res.json()) as { text?: string; error?: string }
+            if (res.ok && typeof data.text === 'string' && data.text.trim()) batchText = data.text
+            else if (res.status === 503 || res.status === 401) unavailable = true
+          } catch {
+            /* rede falhou: tenta de novo */
+          }
+        }
+        if (batchText) ocrText = ocrText ? `${ocrText}\n\n${batchText}` : batchText
+        setOcrPagesDone(end)
+        try {
+          await putLocalDocument({ ...baseDoc, ocrText, ocrPagesDone: end })
+        } catch {
+          /* segue em memória */
+        }
+        if (!batchText && start === 1) break // 1ª leva falhou (ex.: IA indisponível): não insiste nas demais
+      }
+      return { text: ocrText.trim(), totalPages, unavailable }
+    },
+    [],
+  )
 
   const handleGenerate = async () => {
     if (!file) return
@@ -237,35 +322,114 @@ export function UploadDialog({ open, onOpenChange, resumeDocId, initialFile, onC
     try {
       // 1) Extração de texto — acontece NO APARELHO do usuário
       const buffer = new Uint8Array(await file.arrayBuffer())
-      let extraction
+      const baseTitle = (title.trim() || file.name.replace(/\.pdf$/i, '').replace(/[_-]+/g, ' ') || 'Simulado de PDF').slice(0, 120)
+      const accessHeader = buildAccessHeader()
+
+      let text = ''
+      let pagesCount: number | null = null
       try {
-        extraction = await extractPdfText(buffer)
-      } catch (err) {
-        setStep('error')
-        setErrorMsg(err instanceof Error ? err.message : 'Falha ao ler o PDF')
+        const extraction = await extractPdfText(buffer)
+        text = extraction.text
+        pagesCount = extraction.pages
+      } catch {
+        /* PDF sem texto aproveitável (imagem/scan) — cai para a leitura por IA */
+      }
+
+      // 2) Sem texto suficiente → leitura por IA das páginas (OCR)
+      if (text.trim().length < 200) {
+        const baseDoc: LocalDocument = {
+          id: `pdf-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          title: baseTitle,
+          fileName: file.name,
+          fileSize: file.size,
+          pages: 0,
+          charCount: 0,
+          style,
+          status: 'processing',
+          error: null,
+          chunks: [],
+          chunksDone: 0,
+          chunksTotal: 0,
+          createdAt: new Date().toISOString(),
+          questions: [],
+          textBlocks: {},
+          ocrUsed: true,
+          ocrText: '',
+          ocrPagesDone: 0,
+          ocrPagesTotal: 0,
+        }
+        try {
+          await putLocalDocument(baseDoc)
+        } catch {
+          /* segue em memória */
+        }
+        setDocId(baseDoc.id)
+        onCompleted()
+
+        const ocr = await runOcr(buffer, baseDoc, accessHeader)
+        if (cancelled.current || ocr === null) return
+        if (!ocr.text || ocr.text.length < 200) {
+          const failed: LocalDocument = {
+            ...baseDoc,
+            status: 'error',
+            error: ocr.unavailable
+              ? 'O serviço de leitura por IA está temporariamente indisponível. Tente novamente em alguns minutos.'
+              : 'Não foi possível ler o conteúdo deste PDF nem com a leitura por IA. Verifique se o arquivo contém texto legível e tente novamente.',
+          }
+          try {
+            await putLocalDocument(failed)
+          } catch {
+            /* noop */
+          }
+          setStep('error')
+          setErrorMsg(failed.error ?? '')
+          return
+        }
+        text = ocr.text
+
+        const chunks = chunkText(text)
+        const finalDoc: LocalDocument = {
+          ...baseDoc,
+          pages: ocr.totalPages,
+          charCount: text.length,
+          ocrText: text,
+          ocrPagesDone: ocr.totalPages,
+          chunks,
+          chunksTotal: chunks.length,
+        }
+        try {
+          await putLocalDocument(finalDoc)
+        } catch {
+          /* segue em memória */
+        }
+        setCharCount(text.length)
+        setChunksTotal(chunks.length)
+        setChunksDone(0)
+        await runGeneration(finalDoc)
         return
       }
 
-      const chunks = chunkText(extraction.text)
+      // 3) Fluxo normal — texto extraído com sucesso
+      const chunks = chunkText(text)
       if (chunks.length === 0) {
         setStep('error')
         setErrorMsg('O PDF não possui conteúdo de texto aproveitável.')
         return
       }
 
-      setPages(extraction.pages)
-      setCharCount(extraction.text.length)
+      setPages(pagesCount)
+      setCharCount(text.length)
       setChunksTotal(chunks.length)
       setChunksDone(0)
 
-      // 2) Salva o documento no banco LOCAL e inicia a geração
+      // 4) Salva o documento no banco LOCAL e inicia a geração
       const doc: LocalDocument = {
         id: `pdf-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        title: (title.trim() || file.name.replace(/\.pdf$/i, '').replace(/[_-]+/g, ' ') || 'Simulado de PDF').slice(0, 120),
+        title: baseTitle,
         fileName: file.name,
         fileSize: file.size,
-        pages: extraction.pages,
-        charCount: extraction.text.length,
+        pages: pagesCount ?? 0,
+        charCount: text.length,
         style,
         status: 'processing',
         error: null,
@@ -295,14 +459,14 @@ export function UploadDialog({ open, onOpenChange, resumeDocId, initialFile, onC
   }
 
   const stepIcon = (current: Step, target: Step) => {
-    const order: Step[] = ['form', 'extracting', 'generating', 'done']
+    const order: Step[] = ['form', 'extracting', 'ocr', 'generating', 'done']
     const done = order.indexOf(current) > order.indexOf(target) || current === 'done'
     if (done) return <CheckCircle2 className="h-4 w-4 text-emerald-600" />
     if (current === target) return <Loader2 className="h-4 w-4 animate-spin text-amber-600" />
     return <span className="h-4 w-4 rounded-full border-2 border-slate-300" />
   }
 
-  const busy = step === 'extracting' || step === 'generating'
+  const busy = step === 'extracting' || step === 'ocr' || step === 'generating'
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -421,7 +585,7 @@ export function UploadDialog({ open, onOpenChange, resumeDocId, initialFile, onC
           </div>
         )}
 
-        {(step === 'extracting' || step === 'generating' || step === 'done') && (
+        {(step === 'extracting' || step === 'ocr' || step === 'generating' || step === 'done') && (
           <div className="space-y-4 py-2">
             <ul className="space-y-3 text-sm">
               <li className="flex items-center gap-2.5">
@@ -431,7 +595,19 @@ export function UploadDialog({ open, onOpenChange, resumeDocId, initialFile, onC
                   {pages !== null && step !== 'extracting' && (
                     <span className="text-xs text-slate-400">
                       {' '}
-                      • {pages} páginas • {((charCount ?? 0) / 1000).toFixed(0)} mil caracteres
+                      • {pages} páginas
+                    </span>
+                  )}
+                </span>
+              </li>
+              <li className="flex items-center gap-2.5">
+                {stepIcon(step, 'ocr')}
+                <span className={step === 'ocr' ? 'font-semibold text-slate-900' : 'text-slate-600'}>
+                  Lendo as páginas com IA (PDF em imagem)
+                  {ocrPagesTotal !== null && step !== 'ocr' && (
+                    <span className="text-xs text-slate-400">
+                      {' '}
+                      • {ocrPagesTotal} páginas • {((charCount ?? 0) / 1000).toFixed(0)} mil caracteres
                     </span>
                   )}
                 </span>
@@ -454,6 +630,23 @@ export function UploadDialog({ open, onOpenChange, resumeDocId, initialFile, onC
                 </span>
               </li>
             </ul>
+
+            {step === 'ocr' && ocrPagesTotal !== null && ocrPagesTotal > 0 && (
+              <div>
+                <div className="mb-1.5 flex justify-between text-xs text-slate-500">
+                  <span>Progresso da leitura por IA</span>
+                  <span className="tabular-nums">
+                    {ocrPagesDone}/{ocrPagesTotal} páginas
+                  </span>
+                </div>
+                <Progress value={(ocrPagesDone / ocrPagesTotal) * 100} className="h-2.5" />
+                <p className="mt-2 text-xs leading-relaxed text-slate-400">
+                  Este PDF não tem texto embutido (é uma imagem), então a IA está lendo página por página — pode
+                  levar alguns minutos. Feche o aplicativo sem medo: ao reabrir, envie o PDF novamente para
+                  continuar.
+                </p>
+              </div>
+            )}
 
             {chunksTotal > 0 && (
               <div>

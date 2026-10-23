@@ -1,5 +1,6 @@
 import { NextResponse, NextRequest } from 'next/server'
 import ZAI from 'z-ai-web-dev-sdk'
+import { aiChatText } from '@/lib/ai-gateway'
 import {
   buildPrompt,
   parseGeneratedQuestions,
@@ -54,32 +55,16 @@ async function viaZai(chunk: string, style: QuestionStyle, count: number): Promi
   throw lastError instanceof Error ? lastError : new Error('Falha na IA')
 }
 
-/** Provedor 2: API OpenAI-compatível (para Vercel, via AI_API_KEY) */
+/** Provedor 2: API OpenAI-compatível (para Vercel, via AI_API_BASE + AI_API_KEY) */
 async function viaOpenAI(chunk: string, style: QuestionStyle, count: number): Promise<string> {
-  const apiKey = process.env.AI_API_KEY
-  if (!apiKey) throw new Error('IA não configurada')
-  const base = (process.env.AI_API_BASE ?? 'https://api.openai.com/v1').replace(/\/+$/, '')
-  const model = process.env.AI_MODEL ?? 'gpt-4o-mini'
-
-  const res = await fetch(`${base}/chat/completions`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-    body: JSON.stringify({
-      model,
-      temperature: 0.4,
-      messages: [
-        {
-          role: 'system',
-          content:
-            'Você é um elaborador de questões de concursos. Responde SEMPRE apenas com JSON válido, sem markdown e sem explicações.',
-        },
-        { role: 'user', content: buildPrompt(chunk, style, count) },
-      ],
-    }),
-  })
-  if (!res.ok) throw new Error(`Provedor de IA respondeu ${res.status}`)
-  const data = (await res.json()) as { choices?: { message?: { content?: string } }[] }
-  return data.choices?.[0]?.message?.content ?? ''
+  return aiChatText([
+    {
+      role: 'system',
+      content:
+        'Você é um elaborador de questões de concursos. Responde SEMPRE apenas com JSON válido, sem markdown e sem explicações.',
+    },
+    { role: 'user', content: buildPrompt(chunk, style, count) },
+  ])
 }
 
 /**
