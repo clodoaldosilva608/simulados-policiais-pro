@@ -31,9 +31,15 @@ const BREAK_PRESETS = [3, 5, 10, 15]
 
 export function PomodoroScreen({ onBack }: { onBack: () => void }) {
   const [config, setConfig] = useState<PomodoroConfig>(DEFAULT_POMODORO_CONFIG)
-  const [runtime, setRuntime] = useState<{ phase: PomodoroPhase; status: PomodoroStatus; remainingMs: number }>({
+  const [runtime, setRuntime] = useState<{
+    phase: PomodoroPhase
+    status: PomodoroStatus
+    endsAt: number | null
+    remainingMs: number
+  }>({
     phase: 'foco',
     status: 'parado',
+    endsAt: null,
     remainingMs: DEFAULT_POMODORO_CONFIG.focusMin * 60_000,
   })
   const [booted, setBooted] = useState(false)
@@ -56,10 +62,10 @@ export function PomodoroScreen({ onBack }: { onBack: () => void }) {
         const nextPhase: PomodoroPhase = rt.phase === 'foco' ? 'intervalo' : 'foco'
         if (loaded.autoNext) {
           setPomodoroRuntime({ phase: nextPhase, status: 'rodando', endsAt: Date.now() + phaseTotalMs(loaded, nextPhase), remainingMs: 0 })
-          setRuntime({ phase: nextPhase, status: 'rodando', remainingMs: phaseTotalMs(loaded, nextPhase) })
+          setRuntime({ phase: nextPhase, status: 'rodando', endsAt: Date.now() + phaseTotalMs(loaded, nextPhase), remainingMs: phaseTotalMs(loaded, nextPhase) })
         } else {
           setPomodoroRuntime({ phase: nextPhase, status: 'parado', endsAt: null, remainingMs: phaseTotalMs(loaded, nextPhase) })
-          setRuntime({ phase: nextPhase, status: 'parado', remainingMs: phaseTotalMs(loaded, nextPhase) })
+          setRuntime({ phase: nextPhase, status: 'parado', endsAt: null, remainingMs: phaseTotalMs(loaded, nextPhase) })
         }
       } else {
         const remaining =
@@ -68,7 +74,7 @@ export function PomodoroScreen({ onBack }: { onBack: () => void }) {
             : rt.status === 'pausado'
               ? rt.remainingMs
               : phaseTotalMs(loaded, rt.phase)
-        setRuntime({ phase: rt.phase, status: rt.status, remainingMs: remaining })
+        setRuntime({ phase: rt.phase, status: rt.status, endsAt: rt.status === 'rodando' ? rt.endsAt : null, remainingMs: remaining })
       }
       setBooted(true)
     }, 0)
@@ -80,11 +86,12 @@ export function PomodoroScreen({ onBack }: { onBack: () => void }) {
     const nextPhase: PomodoroPhase = runtime.phase === 'foco' ? 'intervalo' : 'foco'
     if (cfg.sound) playEndSignal()
     if (cfg.autoNext) {
-      setPomodoroRuntime({ phase: nextPhase, status: 'rodando', endsAt: Date.now() + phaseTotalMs(cfg, nextPhase), remainingMs: 0 })
-      setRuntime({ phase: nextPhase, status: 'rodando', remainingMs: phaseTotalMs(cfg, nextPhase) })
+      const endsAt = Date.now() + phaseTotalMs(cfg, nextPhase)
+      setPomodoroRuntime({ phase: nextPhase, status: 'rodando', endsAt, remainingMs: 0 })
+      setRuntime({ phase: nextPhase, status: 'rodando', endsAt, remainingMs: phaseTotalMs(cfg, nextPhase) })
     } else {
       setPomodoroRuntime({ phase: nextPhase, status: 'parado', endsAt: null, remainingMs: phaseTotalMs(cfg, nextPhase) })
-      setRuntime({ phase: nextPhase, status: 'parado', remainingMs: phaseTotalMs(cfg, nextPhase) })
+      setRuntime({ phase: nextPhase, status: 'parado', endsAt: null, remainingMs: phaseTotalMs(cfg, nextPhase) })
     }
   }, [runtime.phase])
 
@@ -108,19 +115,19 @@ export function PomodoroScreen({ onBack }: { onBack: () => void }) {
     const remaining = runtime.status === 'pausado' ? Math.max(0, runtime.remainingMs) : totalMs
     const endsAt = Date.now() + remaining
     setPomodoroRuntime({ status: 'rodando', endsAt, remainingMs: remaining })
-    setRuntime((r) => ({ ...r, status: 'rodando', remainingMs: remaining }))
+    setRuntime((r) => ({ ...r, status: 'rodando', endsAt, remainingMs: remaining }))
     if (config.sound) playStartSignal()
   }
 
   const pause = () => {
     const remaining = runtime.endsAt ? Math.max(0, runtime.endsAt - Date.now()) : runtime.remainingMs
     setPomodoroRuntime({ status: 'pausado', endsAt: null, remainingMs: remaining })
-    setRuntime((r) => ({ ...r, status: 'pausado', remainingMs: remaining }))
+    setRuntime((r) => ({ ...r, status: 'pausado', endsAt: null, remainingMs: remaining }))
   }
 
   const reset = () => {
     setPomodoroRuntime({ status: 'parado', endsAt: null, remainingMs: totalMs })
-    setRuntime((r) => ({ ...r, status: 'parado', remainingMs: totalMs }))
+    setRuntime((r) => ({ ...r, status: 'parado', endsAt: null, remainingMs: totalMs }))
   }
 
   const skipPhase = () => {
@@ -128,11 +135,12 @@ export function PomodoroScreen({ onBack }: { onBack: () => void }) {
     const nextTotal = phaseTotalMs(config, nextPhase)
     if (config.sound) playEndSignal()
     if (runtime.status === 'rodando' && config.autoNext) {
-      setPomodoroRuntime({ phase: nextPhase, status: 'rodando', endsAt: Date.now() + nextTotal, remainingMs: 0 })
-      setRuntime({ phase: nextPhase, status: 'rodando', remainingMs: nextTotal })
+      const endsAt = Date.now() + nextTotal
+      setPomodoroRuntime({ phase: nextPhase, status: 'rodando', endsAt, remainingMs: 0 })
+      setRuntime({ phase: nextPhase, status: 'rodando', endsAt, remainingMs: nextTotal })
     } else {
       setPomodoroRuntime({ phase: nextPhase, status: 'parado', endsAt: null, remainingMs: nextTotal })
-      setRuntime({ phase: nextPhase, status: 'parado', remainingMs: nextTotal })
+      setRuntime({ phase: nextPhase, status: 'parado', endsAt: null, remainingMs: nextTotal })
     }
   }
 
@@ -141,7 +149,7 @@ export function PomodoroScreen({ onBack }: { onBack: () => void }) {
       const next = { ...c, ...patch }
       savePomodoroConfig(next)
       // Ajusta o relógio imediatamente quando parado; em execução vale na próxima fase
-      if (next !== configRef.current && runtime.status === 'parado') {
+      if (runtime.status === 'parado') {
         const newTotal = phaseTotalMs(next, runtime.phase)
         setPomodoroRuntime({ remainingMs: newTotal })
         setRuntime((r) => ({ ...r, remainingMs: newTotal }))
