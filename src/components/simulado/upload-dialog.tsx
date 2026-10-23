@@ -44,7 +44,7 @@ interface UploadDialogProps {
 
 type Step = 'form' | 'extracting' | 'generating' | 'done' | 'error'
 
-const MAX_FILE_SIZE = 25 * 1024 * 1024 // 25 MB
+const MAX_FILE_SIZE = 50 * 1024 * 1024 // 50 MB
 
 export function UploadDialog({ open, onOpenChange, resumeDocId, initialFile, onCompleted }: UploadDialogProps) {
   const { toast } = useToast()
@@ -211,6 +211,11 @@ export function UploadDialog({ open, onOpenChange, resumeDocId, initialFile, onC
         setFile(null)
         setStep('generating')
         void resumeGeneration(resumeDocId)
+      } else if (initialFile && initialFile.size > MAX_FILE_SIZE) {
+        // Arquivo vindo do drag & drop não passa pelo input — valida aqui também
+        setFile(null)
+        setStep('error')
+        setErrorMsg('Arquivo muito grande (máximo 50 MB).')
       } else {
         setFile(initialFile)
         setTitle(initialFile ? initialFile.name.replace(/\.pdf$/i, '').replace(/[_-]+/g, ' ') : '')
@@ -313,7 +318,7 @@ export function UploadDialog({ open, onOpenChange, resumeDocId, initialFile, onC
             if (f) {
               if (f.size > MAX_FILE_SIZE) {
                 setStep('error')
-                setErrorMsg('Arquivo muito grande (máximo 25 MB).')
+                setErrorMsg('Arquivo muito grande (máximo 50 MB).')
                 e.target.value = ''
                 return
               }
@@ -358,7 +363,7 @@ export function UploadDialog({ open, onOpenChange, resumeDocId, initialFile, onC
               >
                 <Upload className="h-8 w-8 text-slate-400" />
                 <span className="text-sm font-semibold text-slate-700">Clique para escolher um PDF</span>
-                <span className="text-xs text-slate-400">Editais, apostilas, resumos • até 25 MB</span>
+                <span className="text-xs text-slate-400">Editais, apostilas, resumos • até 50 MB</span>
               </button>
             )}
 

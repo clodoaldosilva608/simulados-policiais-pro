@@ -1000,7 +1000,7 @@ export function LibraryScreen({
               </p>
               <div className="mt-4 flex flex-wrap justify-center gap-2 text-xs font-medium text-slate-500">
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1.5">
-                  <FileText className="h-3.5 w-3.5 text-slate-400" /> PDFs de até 25 MB
+                  <FileText className="h-3.5 w-3.5 text-slate-400" /> PDFs de até 50 MB
                 </span>
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1.5">
                   <Sparkles className="h-3.5 w-3.5 text-amber-500" /> Questões inéditas por IA
