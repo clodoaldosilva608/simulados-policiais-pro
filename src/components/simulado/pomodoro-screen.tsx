@@ -7,8 +7,8 @@ import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import {
   DEFAULT_POMODORO_CONFIG,
-  getPomodoroRuntime,
   loadPomodoroConfig,
+  loadPomodoroRuntime,
   phaseTotalMs,
   playEndSignal,
   playStartSignal,
@@ -48,7 +48,9 @@ export function PomodoroScreen({ onBack }: { onBack: () => void }) {
     const id = window.setTimeout(() => {
       const loaded = loadPomodoroConfig()
       setConfig(loaded)
-      const rt = getPomodoroRuntime()
+      const rt = loadPomodoroRuntime()
+      // Sincroniza o estado de módulo com o persistido (após reload do app)
+      setPomodoroRuntime({ phase: rt.phase, status: rt.status, endsAt: rt.endsAt, remainingMs: rt.remainingMs })
       // Se o tempo esgotou enquanto o aluno estava em outra tela, conclui a fase agora
       if (rt.status === 'rodando' && rt.endsAt && rt.endsAt <= Date.now()) {
         const nextPhase: PomodoroPhase = rt.phase === 'foco' ? 'intervalo' : 'foco'
@@ -90,8 +92,7 @@ export function PomodoroScreen({ onBack }: { onBack: () => void }) {
   useEffect(() => {
     if (runtime.status !== 'rodando' || runtime.endsAt === null) return
     const id = window.setInterval(() => {
-      const rt = getPomodoroRuntime()
-      const remaining = rt.endsAt ? rt.endsAt - Date.now() : 0
+      const remaining = runtime.endsAt ? runtime.endsAt - Date.now() : 0
       if (remaining <= 0) {
         handlePhaseEnd()
       } else {

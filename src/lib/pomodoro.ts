@@ -72,12 +72,36 @@ export interface PomodoroRuntime {
 
 const runtime: PomodoroRuntime = { phase: 'foco', status: 'parado', endsAt: null, remainingMs: 0 }
 
+const RUNTIME_KEY = 'spp-pomodoro-runtime-v1'
+
 export function getPomodoroRuntime(): PomodoroRuntime {
   return runtime
 }
 
 export function setPomodoroRuntime(patch: Partial<PomodoroRuntime>): void {
   Object.assign(runtime, patch)
+  try {
+    localStorage.setItem(RUNTIME_KEY, JSON.stringify(runtime))
+  } catch {
+    /* persistência é opcional */
+  }
+}
+
+/** Recupera o runtime persistido (sobrevive a reload do app/PWA) */
+export function loadPomodoroRuntime(): PomodoroRuntime {
+  try {
+    const raw = localStorage.getItem(RUNTIME_KEY)
+    if (!raw) return { ...runtime }
+    const p = JSON.parse(raw) as Partial<PomodoroRuntime>
+    return {
+      phase: p.phase === 'intervalo' ? 'intervalo' : 'foco',
+      status: p.status === 'rodando' ? 'rodando' : p.status === 'pausado' ? 'pausado' : 'parado',
+      endsAt: typeof p.endsAt === 'number' ? p.endsAt : null,
+      remainingMs: typeof p.remainingMs === 'number' ? p.remainingMs : 0,
+    }
+  } catch {
+    return { ...runtime }
+  }
 }
 
 export function phaseTotalMs(config: PomodoroConfig, phase: PomodoroPhase): number {
