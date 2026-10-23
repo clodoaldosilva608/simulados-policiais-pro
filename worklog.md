@@ -243,3 +243,24 @@ Work Log:
 
 Stage Summary:
 - MINHA CONTA mostra dados e não expulsa mais; MEU DESEMPENHO virou tela completa (Resumo + HISTÓRICO de provas concluídas); CRONÔMETRO de urgência do teste grátis (dias/horas/min/seg) fixo no topo com botão Assinar; menu ☰ no canto direito com tema CLARO/DARK e tamanho de FONTE (P/A/A+) persistidos entre sessões
+
+---
+Task ID: 13
+Agent: main
+Task: Compartilhar app (landing+dashboard), Pomodoro com som, caderno de erros + opinião/sugestões
+
+Work Log:
+- ⚠️ WORKSPACE RESETADO entre sessões: /home/z/my-project virou scaffold genérico (nextjs_tailwind_shadcn_ts, git sem os commits anteriores). RECUPERAÇÃO: clone do GitHub (8afae13) → rsync para o workspace (preservando worklog/scripts/download/upload volume) → bun install → build baseline OK antes de qualquer mudança. /tmp/deploy-src antigo tinha sumido → vercel link --project simuladospoliciais recriado
+- COMPARTILHAR (src/lib/share.ts): shareApp() usa navigator.share (menu nativo WhatsApp/Instagram no celular) com fallback clipboard + toast "Link copiado! 🎉". Landing: botão Compartilhar no hero (3º da linha) + "Compartilhar com os amigos" no CTA final. Dashboard: banner "Está gostando? Compartilhe!" dentro do painel do aluno + MenuItem "Convidar amigos" no ☰
+- POMODORO (src/lib/pomodoro.ts + pomodoro-screen.tsx): config persistida (spp-pomodoro-v1: foco 5-90/intervalo 1-30, presets 15/25/30/45/60 e 3/5/10/15, switches autoNext + sinal sonoro); runtime em escopo de MÓDULO + persistido (spp-pomodoro-runtime-v1) — sobrevive a troca de telas E reload; som Web Audio (oscillator, sem arquivos): 1 bipe ao iniciar, melodia de 3 bipos ao encerrar; círculo SVG de progresso (âmbar foco / esmeralda intervalo), botões Iniciar/Pausar/Retomar/Zerar/Pular; catch-up: se endsAt passou enquanto longe, conclui a fase ao voltar (respeita autoNext)
+- BUG CORRIGIDO (2 deploys): tick lia runtime.endsAt do ESTADO React que não tinha o campo (undefined → remaining 0 → virada de fase a cada 250ms). FIX: endsAt adicionado ao estado React em todas as transições (start/pause/reset/skip/mount/handlePhaseEnd); validado em produção: 04:39→04:35 contando, pausa congela, reload restaura 04:21 pausado com Retomar
+- CADERNO DE ERROS: IndexedDB v2 com store 'errors' (upsert por docId:questionId, timesMissed/timesCorrectReview); handleFinish captura TODAS as erradas (com statement, opções, gabarito, comentário e textBlock para contexto); tela errors-screen.tsx: chips Todas/Para revisar/Dominadas + contadores, cards com badge de disciplina + preview (line-clamp), expandir → TextBlockCard + opções A-E ou C/E clicáveis → acertou = "dominada" / errou = soma mais erro + comentário; Remover do caderno por item + Limpar caderno (confirmar em 2 cliques); badge com contagem no item do menu (MenuItem ganhou prop badge)
+- Deploys: dpl mbmhjw7od → pe6942d51 (persist runtime) → 7tze7mzz5 (fix tick) todos READY; pushes db4fb63, ae3ec8d, f31f793
+- E2E PRODUÇÃO 390x844 (conta e2e.features.t13): landing com 2 botões Compartilhar + toast fallback; dashboard banner + 3 novos itens no ☰; Pomodoro 25:00→preset 15→rodando 14:50→pausado→troca de tela preserva→(após fix) rodando conta, catch-up avançou foco→intervalo, pausa congela (04:21×2), reload restaura pausado+Retomar; prova PF 5 respondidas (1 certo/4 errado) → caderno badge "4" → tela lista 4 questões Língua Portuguesa com "errou 1×" → responder B (gabarito) → "Acertou na revisão — questão dominada!" + comentário → contadores 3 revisar • 1 dominada → filtros Dominadas=1, Para revisar=3; dark mode OK no Pomodoro; 0 erros de console
+- Limpeza: conta e2e.features.t13@gmail.com excluída via admin; browser fechado
+
+Stage Summary:
+- COMPARTILHAR no hero + CTA final da landing e no painel/menu da dashboard (Web Share API nativa no celular, fallback copiar+toast no desktop)
+- POMODORO completo: configurável (foco/intervalo), auto start da próxima fase, sinal sonoro ao iniciar/encerrar, persiste entre telas e recarregamentos
+- CADERNO DE ERROS: captura automática de toda questão errada, revisão respondendo direto no caderno, marca dominadas, filtros e badge no menu
+- Workspace recuperado do GitHub após reset do ambiente
