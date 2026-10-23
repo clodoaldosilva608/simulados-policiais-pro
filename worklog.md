@@ -432,3 +432,22 @@ Stage Summary:
 - Fontes: download/auditoria-fontes/ (capa.html, diagrama-arquitetura.html/png, notas-por-pilar.png); scripts reutilizáveis em scripts/audit_*.py.
 - Principais descobertas para próximas tarefas: (1) ROTACIONAR vcp_/ghp_/Cakto secret ANTES do próximo git push (branch está ahead 17 com token commitado); (2) webhook Cakto fail-closed + idempotência; (3) overview sem passwordHash/PII; (4) sessão+rate limit em generate/transcribe (ACCESS_CODES ausente em produção confirmado por probe); (5) Postgres para substituir Blob JSON de contas; (6) LGPD delete/export inexistente.
 - Nenhum código do app foi alterado (auditoria read-only); os 3 bugs da sessão anterior seguem corrigidos pelo commit 4efac13.
+
+---
+Task ID: 20
+Agent: main (Z.ai)
+Task: "Corrija todos os erros e deixe a plataforma pronta para lançamento" — correções críticas de segurança/launch-readiness da auditoria (Task 16) + LGPD + higiene de repo
+
+Work Log:
+- ROTAS DE IA FECHADAS (antes proxy aberto): /api/generate, /api/transcribe e /api/ai/test agora exigem CONTA AUTENTICADA (validateUserSession) + rate limit por conta via novo aiRouteGuard() em user-auth.ts (generate 40/h, transcribe 30/h, ai-test 20/h); hasValidAccess/ACCESS_CODES por header removido — produção confirmou 401 anônimo nas três rotas
+- WEBHOOK CAKTO fail-closed + idempotência: sem CAKTO_WEBHOOK_SECRET configurado responde 503 (nada processado por anônimos); com segredo, corpo tem hash SHA-256 registrado em index/cakto-processed.json por 7 dias — reentregas/replays devolvem {received:true, duplicate:true} sem reprocessar; segredo JÁ EXISTE na Vercel (todas as envs) — integração intacta
+- OVERVIEW ADMIN SANITIZADO: /api/admin/overview não devolve mais passwordHash, photo (data URL), activeDevice/activeDeviceAt nos usuários (painel não usa nenhum) — verificado em produção: "campos vazados: NENHUM"; config.accessCodes mantido (gerenciador de códigos do painel usa)
+- LGPD — EXCLUSÃO DA PRÓPRIA CONTA: nova rota /api/auth/delete-account (sessão obrigatória, rate limit 5/15min) → deleteUser + purgeEmailRef (NOVA função: libera só o e-mail) + evento account_deleted + Set-Cookie limpando sessão; ÍNDICE ANTI-FRAUDE DE TRIAL POR APARELHO PRESERVADO (excluir conta não rende novo teste no mesmo aparelho) — E2E produção: excluir → re-registrar mesmo e-mail OK (e-mail liberado) → trial BLOQUEADO com reason:"aparelho" ✓; admin purgeAccountRefs continua liberando tudo (decisão explícita do admin)
+- UI: AccountScreen ganhou "Zona de perigo" (Excluir minha conta) com confirmação em dois passos (auto-rearme em 8s), aviso de que a cobrança NÃO é cancelada (Cakto) e limpeza local (localStorage+sessionStorage+IndexedDB simulados-policiais-pro) + redirect para a landing — E2E produção 390x844: conta criada, trial "6d 23h:59m:57s", menu → Minha conta → excluir → landing deslogada ✓
+- HEADERS DE SEGURANÇA (next.config.ts): X-Content-Type-Options nosniff, X-Frame-Options DENY, Referrer-Policy strict-origin-when-cross-origin, Permissions-Policy camera/mic/geo=() — confirmados via curl na produção
+- HIGIENE DE REPO: token vcp_ REMOVIDO do scripts/set-vercel-ai-env.py rastreado (agora lê VERCEL_TOKEN do ambiente, recusa rodar sem); .env removido do índice git (git rm --cached; .env* já estava no .gitignore); scan de segredos em arquivos rastreados limpo
+- Deploy: dpl simuladospoliciais-li59bs1t8 READY, prod HTTP 200; push GitHub 29b3f3f (4efac13..29b3f3f); browser fechado; contas de teste e2e.launch.t20 excluídas via admin (total voltou a 3); cookies/senhas de teste removidos de /tmp
+
+Stage Summary:
+- A plataforma fecha o ciclo de correções da auditoria P0/P1 factíveis no monólito atual: IA não é mais proxy aberto (maior risco de custo), webhook de pagamento é fechado e idempotente, painel admin não expõe hash/foto/UID, aluno pode exercer a exclusão de dados (LGPD) com anti-fraude de trial intacto, headers básicos ativos e nenhum token novo sai para o GitHub
+- PENDÊNCIAS PARA O OWNER (não automatizáveis): ROTACIONAR vcp_/ghp_/PAT (vazaram no histórico git antigo mesmo removidos agora) e trocar a URL do webhook na Cakto se ela não usa ?secret=; migração para Postgres + delete/export completos ficam para a próxima fase
