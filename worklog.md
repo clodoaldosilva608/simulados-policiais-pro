@@ -386,3 +386,26 @@ Stage Summary:
 - Aluno agora usa a própria cota gratuita Gemini de verdade: catálogo atualizado com migração automática, cadeia de fallback anti-descontinuação, "Testar chave" funcional com mensagem real do Google
 - E2E de ponta a ponta em produção comprovou: PDF escaneado → leitura por IA → simulado jogável com gabarito comentado, usando a chave do próprio aluno
 - Pendência: possíveis reforços futuros = remover contas de teste antigas com modelo 2.0 salvo (migração já resolve na carga) e monitorar quando a Google aposentar os modelos 3-preview (a cadeia já se defende sozinha)
+
+---
+Task ID: 19
+Agent: main (Z.ai)
+Task: Tema dark ilegível nas questões + aba "Minha conta" completa (dados, foto, senha, e-mail travado) + botão Suporte (suportesimuladospoliciais@gmail.com) + cronômetro de teste inconsistente (dashboard 6d vs menu 7d)
+
+Work Log:
+- DARK (causa raiz): o remapeamento de globals.css não cobria classes COM modificador de opacidade (Tailwind gera classes separadas) — texto-base bg-slate-50/80, comentário bg-amber-50/70 e header da revisão bg-white/95 ficavam CLAROS no escuro, com texto claro remapeado por cima (ilegível). Adicionados: bg-slate-50/80, bg-amber-50/70, /60, /50, bg-red-100, bg-white/95 + hovers (bg-red-50/100, bg-slate-200) + textos médios clareados (text-red-600/500, text-emerald-600, hover:text-amber-600, hover:text-red-500)
+- TRIAL: accessOf() (user-auth.ts) usava Math.ceil (menu: 7d) enquanto TrialCountdown usa Math.floor sobre trialEndsAt (dashboard: 6d 23:59) → unificado em floor; labels do último dia viram "<1d" (badge do header, menu, access-screen "menos de 1 dia restante")
+- NOVAS ROTAS: /api/auth/profile (nome ≤80 + foto data URL image/* ≤160KB ou null p/ remover; e-mail NÃO editável por design — identidade de login/ativação) e /api/auth/password (exige senha atual, ≥6 chars, rate limit 5/15min por conta); RegistryUser.photo (data URL segue a conta entre aparelhos); /api/auth/me + login + register agora retornam photo/createdAt/device/platform
+- NOVA TELA account-screen.tsx (fase 'conta'): foto de perfil (camera flutuante, canvas 256px JPEG q0.82, remover), nome editável com dirty-check, e-mail TRAVADO com cadeado + nota + "Alterar e-mail pelo suporte", card Dados da conta (situação, fim do teste, conta criada em, aparelho vinculado, e-mail) + Gerenciar assinatura, card Alterar senha (3 campos); Header avatar no menu E painel agora mostram a foto (img com fallback inicial)
+- NOVA TELA support-screen.tsx (fase 'suporte'): card de contato com mailto pré-preenchido (assunto+corpo com e-mail da conta), botão Copiar e-mail, checklist do que incluir, aviso anti-phishing (nunca pedir senha), SLA 24–48h; site.ts supportEmail → suportesimuladospoliciais@gmail.com (antes suporte@simuladospoliciais.pro)
+- MENU: "Minha conta" sai da AccessScreen e vira aba própria (hint "Dados, foto de perfil e senha"); "Suporte" abre a tela dedicada (antes mailto direto)
+- page.tsx: fases 'conta' e 'suporte' + wiring; eslint --fix (diretivas unused)
+- Deploy: dpl simuladospoliciais-i8vd6lq1m READY, prod HTTP 200; rotas /api/auth/profile + /api/auth/password no build; push GitHub 4efac13
+- E2E PRODUÇÃO 390x844 (conta e2e.conta.t19@gmail.com, trial via UI): cronômetro "6d 23:59:47" + menu "Teste grátis • 6d restantes" (CONSISTENTES); Minha conta completa (30/10/2026 (6 dias), Chrome • Linux, 23/10/2026); nome → "Clara Nogueira" salvo no servidor (me confirma); foto PNG → JPEG 7.3KB no servidor + img visível; senha: atual errada → "Senha atual incorreta.", correta → "Senha alterada com sucesso!", LOGOUT + re-login com senha antiga REJEITADO e com nova OK + foto presente no menu; Suporte com o Gmail correto; dark: 9 computed styles conferidos (texto-base rgba(30,41,59,.85), comentário rgba(245,158,11,.13), header revisão rgba(15,23,42,.95), enunciado #e2e8f0 etc.) + screenshots reais (exam/comentário/revisão/conta em dark, tudo legível); 0 erros de console; screenshots /tmp/e2e-t19-*.png
+- Limpeza: conta e2e.conta.t19 excluída via admin (HTTP 200); cookie admin e foto de teste removidos; browser fechado
+
+Stage Summary:
+- Tema escuro agora é 100% legível nas telas de questão (texto-base, enunciado, alternativas, comentário, revisão) — faltavam os remaps das classes com opacidade
+- Cronômetro de teste e badge do menu nunca mais divergem (mesma régua floor + "<1d" no último dia)
+- Aluno tem aba Minha conta de verdade: vê todos os dados, edita nome, troca a foto (segue a conta entre aparelhos) e a senha; e-mail fica travado com caminho direto para o suporte
+- Suporte agora é suportesimuladospoliciais@gmail.com, com tela dedicada que abre o e-mail já preenchido
