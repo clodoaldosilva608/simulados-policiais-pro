@@ -180,14 +180,15 @@ export default function AdminPage() {
           <Card className="border-slate-800 bg-slate-900 text-slate-100">
             <CardContent className="space-y-4 p-6">
               <div className="space-y-1.5">
-                <Label htmlFor="admin-user" className="text-slate-300">Usuário</Label>
+                <Label htmlFor="admin-user" className="text-slate-300">E-mail</Label>
                 <Input
                   id="admin-user"
+                  type="email"
                   autoComplete="username"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   className="h-11 border-slate-700 bg-slate-950 text-white"
-                  placeholder="admin"
+                  placeholder="admin@exemplo.com"
                 />
               </div>
               <div className="space-y-1.5">
