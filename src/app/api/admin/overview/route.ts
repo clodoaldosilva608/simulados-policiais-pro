@@ -49,7 +49,20 @@ export async function GET(req: NextRequest) {
       u.status === 'trial' && u.trialStartedAt
         ? u.trialStartedAt + (u.trialExtendedDays ?? 0) * DAY + SITE.trialDays * DAY
         : undefined
-    return { ...u, trialEndsAt, effStatus: effectiveStatus(u) }
+    // SANITIZAÇÃO: o painel nunca precisa de hash de senha, foto (data URL
+    // grande) nem do UID do aparelho — esses dados ficam só no servidor.
+    const {
+      passwordHash: _hash,
+      photo: _photo,
+      activeDevice: _dev,
+      activeDeviceAt: _devAt,
+      ...safe
+    } = u
+    void _hash
+    void _photo
+    void _dev
+    void _devAt
+    return { ...safe, trialEndsAt, effStatus: effectiveStatus(u) }
   })
 
   const count = (s: EffStatus) => users.filter((u) => u.effStatus === s).length

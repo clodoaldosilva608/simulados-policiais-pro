@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import {
+  AlertTriangle,
   ArrowLeft,
   BadgeCheck,
   Camera,
@@ -86,6 +87,52 @@ export function AccountScreen({ session, onBack, onManageAccess, onOpenSupport }
   const [confirmPwd, setConfirmPwd] = useState('')
   const [savingPwd, setSavingPwd] = useState(false)
   const [pwdOk, setPwdOk] = useState('')
+
+  // Zona de perigo: exclusão da própria conta (LGPD) — dois passos
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const confirmTimer = useRef<number | null>(null)
+
+  const beginConfirmDelete = () => {
+    setConfirmDelete(true)
+    if (confirmTimer.current) window.clearTimeout(confirmTimer.current)
+    confirmTimer.current = window.setTimeout(() => setConfirmDelete(false), 8000)
+  }
+
+  const wipeLocalData = () => {
+    try {
+      window.localStorage.clear()
+      window.sessionStorage.clear()
+    } catch {
+      /* armazenamento indisponível */
+    }
+    try {
+      indexedDB.deleteDatabase('simulados-policiais-pro')
+    } catch {
+      /* banco já ausente */
+    }
+  }
+
+  const deleteAccount = async () => {
+    if (deleting) return
+    setDeleting(true)
+    try {
+      const res = await fetch('/api/auth/delete-account', { method: 'POST' })
+      const data = (await res.json().catch(() => ({}))) as { ok?: boolean; message?: string }
+      if (data.ok) {
+        wipeLocalData()
+        // Recarrega sem cache: sessão encerrada → volta para a página inicial
+        window.location.replace('/')
+        return
+      }
+      toast({ title: 'Não foi possível excluir', description: data.message ?? 'Tente novamente.' })
+    } catch {
+      toast({ title: 'Falha de conexão', description: 'Verifique sua internet e tente novamente.' })
+    } finally {
+      setDeleting(false)
+      setConfirmDelete(false)
+    }
+  }
 
   useEffect(() => {
     setName(user?.name ?? '')
@@ -496,6 +543,55 @@ export function AccountScreen({ session, onBack, onManageAccess, onOpenSupport }
             {savingPwd ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <KeyRound className="mr-2 h-4 w-4" />}
             {savingPwd ? 'Salvando...' : 'Trocar senha'}
           </Button>
+        </section>
+
+        {/* Zona de perigo: exclusão da conta */}
+        <section
+          aria-label="Excluir conta"
+          className="rounded-2xl border border-red-200 bg-red-50 p-5"
+        >
+          <p className="flex items-center gap-2 text-sm font-bold text-red-800">
+            <AlertTriangle className="h-4 w-4" /> Excluir minha conta
+          </p>
+          <p className="mt-2 text-sm leading-relaxed text-red-700">
+            Apaga da sua conta o nome, o e-mail, a foto e o status de acesso. O histórico de
+            estudos deste aparelho também é apagado. O e-mail volta a ficar livre para um novo
+            cadastro.
+          </p>
+          <p className="mt-1 text-xs leading-relaxed text-red-600">
+            Se você tem assinatura ativa, a cobrança NÃO é cancelada por aqui — cancele na
+            plataforma de pagamento (Cakto) ou escreva para o suporte.
+          </p>
+          <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+            {!confirmDelete ? (
+              <Button
+                variant="outline"
+                onClick={beginConfirmDelete}
+                className="h-11 border-red-300 bg-white font-bold text-red-700 hover:bg-red-100"
+              >
+                <Trash2 className="mr-2 h-4 w-4" /> Excluir minha conta
+              </Button>
+            ) : (
+              <>
+                <Button
+                  onClick={() => void deleteAccount()}
+                  disabled={deleting}
+                  className="h-11 bg-red-600 font-black text-white hover:bg-red-700 disabled:opacity-60"
+                >
+                  {deleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
+                  {deleting ? 'Excluindo...' : 'Confirmar exclusão definitiva'}
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => setConfirmDelete(false)}
+                  disabled={deleting}
+                  className="h-11 border-slate-300 bg-white font-bold text-slate-700 hover:bg-slate-100"
+                >
+                  Cancelar
+                </Button>
+              </>
+            )}
+          </div>
         </section>
 
         <p className="px-1 pb-2 text-center text-xs leading-relaxed text-slate-400">

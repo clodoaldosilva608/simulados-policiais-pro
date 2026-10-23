@@ -1,6 +1,7 @@
 import { NextResponse, NextRequest } from 'next/server'
 import ZAI from 'z-ai-web-dev-sdk'
 import { aiChatVision, type AiCallConfig } from '@/lib/ai-gateway'
+import { aiRouteGuard } from '@/lib/user-auth'
 
 export const runtime = 'nodejs'
 export const maxDuration = 150
@@ -15,15 +16,8 @@ const TRANSCRIBE_PROMPT =
   'Preserve a numeração de questões, enunciados, alternativas (A–E), trechos de lei, tabelas simples e rodapés. ' +
   'Não comente, não resuma e não omita nada.'
 
-function hasValidAccess(req: NextRequest): boolean {
-  const codes = (process.env.ACCESS_CODES ?? '')
-    .split(',')
-    .map((c) => c.trim().toUpperCase())
-    .filter(Boolean)
-  if (codes.length === 0) return true
-  const provided = (req.headers.get('x-access-code') ?? '').trim().toUpperCase()
-  return provided.length > 0 && codes.includes(provided)
-}
+// Segurança: transcrição exige CONTA AUTENTICADA + limite por conta.
+// (Antes usava ACCESS_CODES via header — aberta quando a env não existia.)
 
 /** Provedor 1: SDK do ambiente (Z.ai) — usado em desenvolvimento/preview */
 async function viaZaiVision(images: string[]): Promise<string> {
@@ -47,11 +41,9 @@ function viaGatewayVision(images: string[], cfg?: AiCallConfig): Promise<string>
  * Opcionalmente usa a chave de IA do aluno (Google AI Studio) enviada no corpo.
  */
 export async function POST(req: NextRequest) {
-  if (!hasValidAccess(req)) {
-    return NextResponse.json(
-      { error: 'Acesso inválido. Ative sua assinatura para usar a leitura por IA.' },
-      { status: 401 },
-    )
+  const guard = await aiRouteGuard(req, 'transcribe', 30)
+  if (!guard.ok) {
+    return NextResponse.json({ error: guard.message }, { status: guard.status })
   }
 
   let body: { images?: unknown; apiKey?: unknown; model?: unknown }

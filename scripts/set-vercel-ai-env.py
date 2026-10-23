@@ -1,8 +1,24 @@
-"""Configura as env vars do gateway de IA na Vercel (production/preview/development)."""
+"""Configura as env vars do gateway de IA na Vercel (production/preview/development).
+
+Segurança: o token NUNCA fica no código — leia do ambiente OU de /etc/.z-ai-config.
+Uso: VERCEL_TOKEN=vcp_... python scripts/set-vercel-ai-env.py
+"""
 import json
+import os
 import urllib.request
 
-VERCEL_TOKEN = "vcp_101JcBxPkAWJySJisg9r0NEWZ5plt8eMwagj0z1kuqUcQGbZ5d0EN1gT"
+def _token() -> str:
+    tok = os.environ.get("VERCEL_TOKEN", "").strip()
+    if tok:
+        return tok
+    try:
+        return json.load(open("/etc/.z-ai-config")).get("vercelToken", "").strip()
+    except Exception:
+        return ""
+
+VERCEL_TOKEN = _token()
+if not VERCEL_TOKEN:
+    raise SystemExit("Defina VERCEL_TOKEN no ambiente (nunca commitar tokens!)")
 PROJECT_ID = "prj_FJzi584zmq8QjdBZcd5TA80G9Bin"
 
 cfg = json.load(open("/etc/.z-ai-config"))

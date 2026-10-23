@@ -1,6 +1,7 @@
 import { NextResponse, NextRequest } from 'next/server'
 import ZAI from 'z-ai-web-dev-sdk'
 import { aiChatText, type AiCallConfig } from '@/lib/ai-gateway'
+import { aiRouteGuard } from '@/lib/user-auth'
 import { personaPrompt } from '@/lib/ai-settings'
 import {
   buildPrompt,
@@ -18,17 +19,8 @@ function normalizeStyle(v: unknown): QuestionStyle {
   return v === 'certo_errado' ? 'certo_errado' : 'multipla'
 }
 
-function hasValidAccess(req: NextRequest): boolean {
-  // Quando ACCESS_CODES está configurado, exige um código válido no header.
-  // Sem ACCESS_CODES (ex.: preview local), a geração fica liberada.
-  const codes = (process.env.ACCESS_CODES ?? '')
-    .split(',')
-    .map((c) => c.trim().toUpperCase())
-    .filter(Boolean)
-  if (codes.length === 0) return true
-  const provided = (req.headers.get('x-access-code') ?? '').trim().toUpperCase()
-  return provided.length > 0 && codes.includes(provided)
-}
+// Segurança: geração de questões exige CONTA AUTENTICADA + limite por conta.
+// (Antes usava ACCESS_CODES via header — aberta quando a env não existia.)
 
 /** Configuração da IA vinda do corpo da requisição (chave do aluno, etc.) */
 interface GenerateAiConfig extends AiCallConfig {
@@ -133,11 +125,9 @@ async function viaOpenAI(
  * preferências de comportamento configuradas na aba "Configurações da IA".
  */
 export async function POST(req: NextRequest) {
-  if (!hasValidAccess(req)) {
-    return NextResponse.json(
-      { error: 'Acesso inválido. Ative sua assinatura para gerar simulados.' },
-      { status: 401 },
-    )
+  const guard = await aiRouteGuard(req, 'generate', 40)
+  if (!guard.ok) {
+    return NextResponse.json({ error: guard.message }, { status: guard.status })
   }
 
   let body: Record<string, unknown>

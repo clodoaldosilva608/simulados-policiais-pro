@@ -216,20 +216,34 @@ export async function deviceHasTrial(deviceUid: string): Promise<boolean> {
 }
 
 /**
- * Remove referências da conta nos índices (chamado quando o admin exclui um
- * usuário): o e-mail volta a poder ser cadastrado e o aparelho é liberado.
+ * Remove APENAS a referência de e-mail no índice (chamado quando a conta é
+ * excluída): o e-mail volta a poder ser cadastrado. O índice de teste grátis
+ * por aparelho é preservado — senão bastaria excluir a conta para ganhar um
+ * novo teste de 7 dias no mesmo aparelho.
+ */
+export async function purgeEmailRef(userId: string, email?: string): Promise<void> {
+  try {
+    if (!email) return
+    const norm = normalizeEmail(email)
+    const idx = await readJson<EmailIndex>(EMAIL_INDEX)
+    if (idx && idx[norm] === userId) {
+      const next = { ...idx }
+      delete next[norm]
+      await writeJson(EMAIL_INDEX, next)
+    }
+  } catch {
+    /* limpeza de índices nunca deve quebrar a exclusão */
+  }
+}
+
+/**
+ * Remove referências da conta nos índices (usado pelo ADMIN ao excluir um
+ * usuário): o e-mail volta a poder ser cadastrado e o aparelho é liberado
+ * (inclusive para novo teste grátis — decisão explícita do admin).
  */
 export async function purgeAccountRefs(userId: string, email?: string): Promise<void> {
+  await purgeEmailRef(userId, email)
   try {
-    if (email) {
-      const norm = normalizeEmail(email)
-      const idx = await readJson<EmailIndex>(EMAIL_INDEX)
-      if (idx && idx[norm] === userId) {
-        const next = { ...idx }
-        delete next[norm]
-        await writeJson(EMAIL_INDEX, next)
-      }
-    }
     const trials = await readJson<DeviceTrials>(DEVICE_TRIALS)
     if (trials) {
       const next: DeviceTrials = {}
@@ -391,4 +405,44 @@ export function rateLimit(key: string, max: number, windowMs: number): boolean {
 
 export function clientIp(req: NextRequest): string {
   return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'local'
+}
+
+/* ------------------------------------------------------------------ */
+/* Guarda das rotas de IA (generate / transcribe / ai-test)            */
+/* ------------------------------------------------------------------ */
+
+export type AiGuardResult =
+  | { ok: true; userId: string }
+  | { ok: false; status: number; message: string }
+
+/**
+ * Porta de entrada OBRIGATÓRIA dos recursos de IA: exige CONTA AUTENTICADA
+ * (cookie de sessão válido neste aparelho) e aplica limite de uso por conta.
+ * Assim o app nunca funciona como proxy aberto de IA para anônimos —
+ * nem quando a chave do próprio app está configurada no servidor.
+ */
+export async function aiRouteGuard(
+  req: NextRequest,
+  kind: 'generate' | 'transcribe' | 'ai-test',
+  maxPerHour = 40,
+): Promise<AiGuardResult> {
+  const check = await validateUserSession(req)
+  if (!check.ok || !check.user) {
+    const banned = check.reason === 'banned' || check.reason === 'revoked'
+    return {
+      ok: false,
+      status: banned ? 403 : 401,
+      message: banned
+        ? 'Sua conta não pode usar os recursos de IA. Fale com o suporte.'
+        : 'Entre na sua conta para usar os recursos de IA.',
+    }
+  }
+  if (!rateLimit(`ai:${kind}:${check.user.id}`, maxPerHour, 3_600_000)) {
+    return {
+      ok: false,
+      status: 429,
+      message: 'Limite de uso por hora atingido. Aguarde alguns minutos e tente novamente.',
+    }
+  }
+  return { ok: true, userId: check.user.id }
 }

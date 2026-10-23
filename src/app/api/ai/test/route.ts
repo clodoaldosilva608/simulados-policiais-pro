@@ -1,6 +1,7 @@
 import { NextResponse, NextRequest } from 'next/server'
 import ZAI from 'z-ai-web-dev-sdk'
 import { aiChatText } from '@/lib/ai-gateway'
+import { aiRouteGuard } from '@/lib/user-auth'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -85,6 +86,12 @@ function friendlyError(joined: string, model: string, models: string[]): string 
  * Sem chave no corpo, testa o provedor de IA do app (Z.ai/gateway).
  */
 export async function POST(req: NextRequest) {
+  // Segurança: teste de chave exige conta autenticada (evita abuso anônimo)
+  const guard = await aiRouteGuard(req, 'ai-test', 20)
+  if (!guard.ok) {
+    return NextResponse.json({ ok: false, error: guard.message }, { status: guard.status })
+  }
+
   let body: { apiKey?: unknown; model?: unknown }
   try {
     body = (await req.json()) as typeof body
