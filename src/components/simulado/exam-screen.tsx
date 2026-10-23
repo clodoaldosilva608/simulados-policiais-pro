@@ -40,6 +40,7 @@ import {
 import { HtmlContent } from './html-content'
 import { TextBlockCard } from './text-block-card'
 import { CommentLocked } from './comment-lock'
+import { ShareQuestionButton } from './share-question-button'
 import {
   formatDuration,
   answerLabel,
@@ -297,7 +298,7 @@ export function ExamScreen({
               exit={{ opacity: 0, x: -24 }}
               transition={{ duration: 0.18 }}
             >
-              <Card className="border-slate-200 shadow-sm">
+              <Card id="exam-question-card" className="border-slate-200 shadow-sm">
                 <CardContent className="p-5 sm:p-7">
                   {/* Cabeçalho da questão */}
                   <div className="flex flex-wrap items-center gap-3">
@@ -320,6 +321,7 @@ export function ExamScreen({
                       <Flag className={`h-3.5 w-3.5 ${markedSet.has(question.id) ? 'fill-amber-500 text-amber-600' : ''}`} />
                       {markedSet.has(question.id) ? 'Sinalizada' : 'Sinalizar'}
                     </button>
+                    <ShareQuestionButton targetId="exam-question-card" />
                   </div>
 
                   {question.textRef && pack.textBlocks[question.textRef] && (

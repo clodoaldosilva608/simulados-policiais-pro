@@ -16,6 +16,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { HtmlContent } from './html-content'
 import { TextBlockCard } from './text-block-card'
 import { CommentLocked } from './comment-lock'
+import { ShareQuestionButton } from './share-question-button'
 import { getPackSubject, answerLabel, isCertErrado, type OptionKey, type SimuladoPack } from '@/data/simulado'
 
 type FilterKey = 'todas' | 'acertos' | 'erros' | 'branco' | 'sinalizadas'
@@ -129,7 +130,7 @@ export function ReviewScreen({ pack, answers, marked, planFree = false, comments
               viewport={{ once: true, margin: '-40px' }}
               transition={{ duration: 0.25 }}
             >
-              <Card className="border-slate-200">
+              <Card id={`review-question-${q.id}`} className="border-slate-200">
                 <CardContent className="p-5 sm:p-6">
                   <div className="flex flex-wrap items-center gap-2.5">
                     <span className="rounded-lg bg-slate-900 px-3 py-1 text-sm font-bold text-amber-300">
@@ -157,6 +158,7 @@ export function ReviewScreen({ pack, answers, marked, planFree = false, comments
                       {status === 'branco' && <HelpCircle className="h-3.5 w-3.5" />}
                       {status === 'acertos' ? 'Acertou' : status === 'erros' ? 'Errou' : 'Sem resposta'}
                     </span>
+                    <ShareQuestionButton targetId={`review-question-${q.id}`} />
                   </div>
 
                   {q.textRef && pack.textBlocks[q.textRef] && (
