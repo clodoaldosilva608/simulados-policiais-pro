@@ -609,3 +609,34 @@ Stage Summary:
 - Bloqueador restante é APENAS billing: store suspensa por cota — owner precisa fazer upgrade Pro ou aguardar reset do ciclo em vercel.com → Storage → simulados-registry
 - Dados intactos (3 usuários visíveis na listagem); login volta sozinho quando a store reativar
 - Token Vercel do owner válido e em uso nesta sessão (recomendado deletar após estabilizar)
+
+---
+Task ID: 28
+Agent: main (Z.ai)
+Task: Contornar store Blob suspensa — migração do registro para Postgres/Supabase
+
+Work Log:
+- Criação de store Blob nova bloqueada pela Vercel: "usage_threshold_limits_reached"
+- Contorno: store Supabase ativa (supabase-meucorre, de residuoszero) conectada ao
+  projeto simulados via API POST /v1/storage/stores/{id}/connections (prod+preview)
+- Vercel injetou POSTGRES_URL/POSTGRES_PRISMA_URL/SUPABASE_* no projeto automaticamente
+- Novo src/lib/pg-registry.ts: document-store JSONB (tabela registry_docs, ensureTable
+  idempotente, pool singleton, probe pgDiag)
+- blob-registry.ts: primitivas readJson/writeJson/listAll/deleteUser/prune agora
+  priorizam Postgres via activeBackend(): postgres > blob > local (LKG/cache mantidos)
+- Fix SSL: sslmode removido do URL (causava "self-signed certificate in certificate
+  chain" no pooler Supabase) + ssl:{rejectUnauthorized:false} + keepAlive
+- diag-storage: sonda pg completa (connect/put/get/del), veredito por backend
+- Deploys: 2x (SSL fix no segundo). Veredito final: OPERACIONAL
+- E2E produção: registro 200 → login 200 → /me autenticado → senha errada 401 →
+  questões seed 1002 OK → admin overview lista usuário novo
+- Commit e push no GitHub (feat(storage): contorno à Blob suspensa)
+
+Stage Summary:
+- LOGINS RESTAURADOS em produção sem upgrade de plano e sem esperar reset de cota
+- Backend ativo: postgres (Supabase meucorre compartilhado com residuoszero —
+  tabelas isoladas em registry_docs, sem impacto no outro app)
+- Dados antigos (3 usuários, códigos, configs) presos na Blob suspensa: usuários
+  re-cadastram; quando a store reativar (reset/upgrade), backup admin pode migrar
+- Materiais (upload de PDF) ainda usa Blob diretamente — indisponível até a store voltar
+- Questões: 1002 servidas do seed estático (sem dependência de storage)
