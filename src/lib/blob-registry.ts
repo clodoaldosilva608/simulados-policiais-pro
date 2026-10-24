@@ -1,6 +1,7 @@
 import { put, get, list, del } from '@vercel/blob'
 import { readFile, writeFile, mkdir, readdir } from 'node:fs/promises'
 import { join } from 'node:path'
+import { pgConfigured, pgRead, pgWrite, pgList, pgDel } from '@/lib/pg-registry'
 
 /**
  * Registro central de usuários — armazenamento em Vercel Blob.
@@ -71,6 +72,19 @@ const MAX_EVENTS = 250
 
 export function blobConfigured(): boolean {
   return Boolean(process.env.BLOB_READ_WRITE_TOKEN)
+}
+
+/**
+ * BACKEND ATIVO (ordem de prioridade):
+ *   1. Postgres/Supabase (POSTGRES_URL* | DATABASE_URL) — contorno à store
+ *      Blob suspensa por cota; sem limite de operações.
+ *   2. Vercel Blob (BLOB_READ_WRITE_TOKEN) — backend original.
+ *   3. Filesystem local (dev/E2E sem credenciais).
+ */
+export function activeBackend(): 'postgres' | 'blob' | 'local' {
+  if (pgConfigured()) return 'postgres'
+  if (blobConfigured()) return 'blob'
+  return 'local'
 }
 
 /**
@@ -155,15 +169,33 @@ function markBlobDown(err: unknown): void {
 }
 
 export async function readJson<T>(pathname: string): Promise<T | null> {
-  if (!blobConfigured()) return readLocal<T>(pathname)
+  const backend = activeBackend()
+  if (backend === 'local') return readLocal<T>(pathname)
+  // Cache em memória vale para pg e blob (economiza round-trips no serverless).
   const hit = jsonCache.get(pathname)
   if (hit && Date.now() - hit.at < JSON_CACHE_TTL_MS) {
     return hit.data as T
   }
+  if (backend === 'postgres') {
+    try {
+      const data = await pgRead<T>(pathname)
+      if (data !== null) {
+        jsonCache.set(pathname, { data, at: Date.now() })
+        jsonLkg.set(pathname, data)
+      }
+      return data
+    } catch (err) {
+      markBlobDown(err)
+      const lkg = jsonLkg.get(pathname)
+      if (lkg !== undefined) return lkg as T
+      return null
+    }
+  }
   try {
-    // SDK v2: get() retorna { stream, blob (metadados), headers }
-    const { stream } = await get(pathname, { access: 'private', useCache: false })
-    const text = await streamToText(stream)
+    // SDK v2: get() retorna { stream, blob (metadados), headers } — ou null
+    const res = await get(pathname, { access: 'private', useCache: false })
+    if (!res) return null
+    const text = await streamToText(res.stream)
     const data = JSON.parse(text) as T
     jsonCache.set(pathname, { data, at: Date.now() })
     jsonLkg.set(pathname, data)
@@ -197,14 +229,19 @@ async function streamToText(stream: unknown): Promise<string> {
 }
 
 export async function writeJson(pathname: string, data: unknown): Promise<void> {
-  if (!blobConfigured()) return writeLocal(pathname, data)
+  const backend = activeBackend()
+  if (backend === 'local') return writeLocal(pathname, data)
   try {
-    await put(pathname, JSON.stringify(data), {
-      access: 'private',
-      contentType: 'application/json',
-      addRandomSuffix: false,
-      allowOverwrite: true,
-    })
+    if (backend === 'postgres') {
+      await pgWrite(pathname, data)
+    } else {
+      await put(pathname, JSON.stringify(data), {
+        access: 'private',
+        contentType: 'application/json',
+        addRandomSuffix: false,
+        allowOverwrite: true,
+      })
+    }
     // write-through: a própria instância já vê o dado novo (evita ler de volta)
     jsonCache.set(pathname, { data, at: Date.now() })
     jsonLkg.set(pathname, data)
@@ -236,7 +273,18 @@ export async function writeJsonSoft(pathname: string, data: unknown): Promise<bo
 const listLkg = new Map<string, string[]>()
 
 async function listAll(prefix: string, cap = 2000): Promise<string[]> {
-  if (!blobConfigured()) return listLocal(prefix, cap)
+  const backend = activeBackend()
+  if (backend === 'local') return listLocal(prefix, cap)
+  if (backend === 'postgres') {
+    try {
+      const paths = await pgList(prefix, cap)
+      listLkg.set(prefix, paths)
+      return paths
+    } catch (err) {
+      markBlobDown(err)
+      return listLkg.get(prefix) ?? []
+    }
+  }
   const paths: string[] = []
   let cursor: string | undefined
   try {
@@ -366,7 +414,8 @@ export async function upsertUser(
 
 export async function deleteUser(id: string): Promise<void> {
   try {
-    await del(userPath(id))
+    if (activeBackend() === 'postgres') await pgDel(userPath(id))
+    else await del(userPath(id))
   } catch {
     /* já removido */
   }
@@ -398,7 +447,11 @@ export async function appendEvent(
           .sort((a, b) => b.at - a.at)
         const toDelete = sorted.slice(MAX_EVENTS)
         if (toDelete.length > 0) {
-          await del(toDelete.map((e) => eventPath(e.id))).catch(() => {})
+          if (activeBackend() === 'postgres') {
+            await pgDel(toDelete.map((e) => eventPath(e.id))).catch(() => {})
+          } else {
+            await del(toDelete.map((e) => eventPath(e.id))).catch(() => {})
+          }
         }
       }
     }
