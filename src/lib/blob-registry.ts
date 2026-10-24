@@ -154,7 +154,14 @@ async function listLocal(prefix: string, cap = 2000): Promise<string[]> {
  */
 const jsonCache = new Map<string, { data: unknown; at: number }>()
 const jsonLkg = new Map<string, unknown>()
-const JSON_CACHE_TTL_MS = 45_000
+/**
+ * TTL do cache: 45s no Blob (economia de cota era o motivo original) e 12s
+ * no Postgres (sem cota de operações — leituras baratas, consistência maior
+ * entre instâncias: ativações aparecem quase em tempo real).
+ */
+function jsonCacheTtl(): number {
+  return activeBackend() === 'postgres' ? 12_000 : 45_000
+}
 
 /** Erro do Blob marca indisponibilidade temporária (para rotas darem 503 claro). */
 let blobDownUntil = 0
@@ -173,7 +180,7 @@ export async function readJson<T>(pathname: string): Promise<T | null> {
   if (backend === 'local') return readLocal<T>(pathname)
   // Cache em memória vale para pg e blob (economiza round-trips no serverless).
   const hit = jsonCache.get(pathname)
-  if (hit && Date.now() - hit.at < JSON_CACHE_TTL_MS) {
+  if (hit && Date.now() - hit.at < jsonCacheTtl()) {
     return hit.data as T
   }
   if (backend === 'postgres') {
