@@ -640,3 +640,26 @@ Stage Summary:
   re-cadastram; quando a store reativar (reset/upgrade), backup admin pode migrar
 - Materiais (upload de PDF) ainda usa Blob diretamente — indisponível até a store voltar
 - Questões: 1002 servidas do seed estático (sem dependência de storage)
+
+---
+Task ID: 29
+Agent: main (Z.ai)
+Task: Validar fluxo completo de assinante (código de acesso + ativação)
+
+Work Log:
+- Criado código SPP-WWET-WTQN-JFZ5 via POST /api/admin/codes (persistiu no Postgres)
+- 2 contas de teste registradas e ativadas com o código via POST /api/license
+- Detectada inconsistência aparente: ativação respondia "active" mas leituras
+  cruzadas mostravam "trial" por ~45-90s — causa: cache jsonCache TTL 45s por
+  instância (herdado da era Blob) + roteamento entre instâncias lambda
+- Melhoria: TTL dinâmico — 12s no Postgres (sem cota), 45s no Blob (legado)
+- Deploy final: backend postgres operacional, login assinante 200, /me access
+  status active, plano premium sem limites (planLimits None = correto)
+
+Stage Summary:
+- Fluxo completo de assinante VALIDADO em produção: código criado no painel →
+  registro → login → ativação por código → sessão premium → eventos no admin
+- Dados íntegros no Postgres (backup admin confere status/source/ident)
+- Commits: 68332d8 (migração pg) e 4aec800 (TTL 12s) — push GitHub OK
+- Pendências do dono: recriar códigos definitivos/plans/config no painel;
+  comunicar os 3 alunos antigos sobre re-cadastro; materiais PDF seguem na Blob
