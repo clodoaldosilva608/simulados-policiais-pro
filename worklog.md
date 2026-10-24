@@ -587,3 +587,25 @@ Stage Summary:
 - Login de aluno quebrado em produção é 100% efeito da store suspensa: dados das contas continuam lá e voltam sozinhos quando a cota for liberada/upgrade
 - Código novo garante: (1) login não falha por erro de escrita; (2) mensagens 503 claras durante outage; (3) heartbeats não queimam cota; (4) painel mostra o diagnóstico real do armazenamento; (5) backup/restore completo via admin — seguro contra perda definitiva
 - BLOQUEIOS COM O OWNER: (a) vercel.com → Storage → simulados-registry → upgrade/reset da cota (restaura os logins imediatamente, sem deploy); (b) criar novo token Vercel e enviar para eu deployar a resiliência; (c) opcional: repo GitHub está público
+
+---
+Task ID: 27
+Agent: main (Z.ai)
+Task: Deploy da correção de login em produção + diagnóstico oficial do Blob
+
+Work Log:
+- 5 tentativas de `vercel login` device-flow falharam (sandbox mata processos em background mesmo com setsid/nohup)
+- Token manual criado pelo owner no painel → validado via `vercel whoami` (clodoaldosilva608)
+- .vercel/project.json recriado manualmente (prj_FJzi584zmq8QjdBZcd5TA80G9Bin / team_iylYgr5VwMOCi7FtolZSwtcO)
+- Deploy --prod OK em 36s: https://simuladospoliciais.vercel.app (commit 89a3687 no ar)
+- Rotas novas /api/admin/diag-storage e /api/admin/backup ativas (401 sem auth)
+- Login admin OK (username=clodoaldo608@gmail.com — campo é username, não email)
+- diag-storage oficial: verdict = "suspensa-por-cota" (list OK 3 blobs, get 403, put "This store has been suspended")
+- REST API confirma: simulados-registry + simulados-registry-priv = limits-exceeded-suspended (6 stores suspensas na conta)
+- Login aluno agora: HTTP 503 "Serviço de contas temporariamente indisponível" (correto, sem 401 enganoso)
+
+Stage Summary:
+- Deploy publicado com sucesso; correção LKG + 503 honesto + heartbeat 60min no ar
+- Bloqueador restante é APENAS billing: store suspensa por cota — owner precisa fazer upgrade Pro ou aguardar reset do ciclo em vercel.com → Storage → simulados-registry
+- Dados intactos (3 usuários visíveis na listagem); login volta sozinho quando a store reativar
+- Token Vercel do owner válido e em uso nesta sessão (recomendado deletar após estabilizar)
