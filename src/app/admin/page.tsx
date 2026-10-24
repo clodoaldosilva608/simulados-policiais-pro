@@ -8,6 +8,7 @@ import {
   Ban,
   BookOpenCheck,
   Clock,
+  CloudDownload,
   Coins,
   Database,
   Download,
@@ -478,6 +479,7 @@ function EventBadge({ type }: { type: string }) {
 
 interface StorageDiag {
   verdict: string
+  backend?: 'postgres' | 'blob' | 'local'
   dica?: string
   probes?: { op: string; ok: boolean; code?: string; message?: string }[]
 }
@@ -486,6 +488,7 @@ function StorageBackupCard() {
   const [diag, setDiag] = useState<StorageDiag | null>(null)
   const [probing, setProbing] = useState(true)
   const [restoring, setRestoring] = useState(false)
+  const [migrating, setMigrating] = useState(false)
   const [msg, setMsg] = useState('')
 
   const probe = useCallback(async () => {
@@ -532,6 +535,28 @@ function StorageBackupCard() {
       setMsg('Arquivo inválido — envie o JSON gerado pelo botão "Baixar backup".')
     } finally {
       setRestoring(false)
+    }
+  }
+
+  const migrateBlob = async () => {
+    setMigrating(true)
+    setMsg('')
+    try {
+      const res = await fetch('/api/admin/migrate-blob', { method: 'POST' })
+      const data = (await res.json()) as {
+        ok?: boolean
+        message?: string
+        users?: number
+        events?: number
+        codes?: number
+        questionsMerged?: number
+      }
+      setMsg(data.message ?? (data.ok ? 'Migração concluída.' : 'Blob inacessível — tente quando a store reativar.'))
+      if (data.ok) void probe()
+    } catch {
+      setMsg('Falha ao chamar a migração.')
+    } finally {
+      setMigrating(false)
     }
   }
 
@@ -597,6 +622,18 @@ function StorageBackupCard() {
               }}
             />
           </label>
+          {diag?.backend === 'postgres' && (
+            <Button
+              onClick={() => void migrateBlob()}
+              disabled={migrating}
+              size="sm"
+              variant="outline"
+              className="border-slate-700 bg-slate-950 text-slate-200 hover:bg-slate-800"
+            >
+              {migrating ? <Loader2 className="h-4 w-4 animate-spin" /> : <CloudDownload className="h-4 w-4" />}
+              <span className="ml-1.5">Importar dados da Blob</span>
+            </Button>
+          )}
         </div>
         <p className="text-[11px] leading-relaxed text-slate-500">
           O backup contém TODAS as contas (senhas em hash), índices, códigos e o conteúdo do app (questões,
